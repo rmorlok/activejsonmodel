@@ -2,7 +2,7 @@ require_relative "lib/activejsonmodel/version"
 
 Gem::Specification.new do |spec|
   spec.name = "activejsonmodel"
-  spec.version = Activejsonmodel::VERSION
+  spec.version = ActiveJsonModel::VERSION
   spec.authors = ["Ryan Morlok"]
   spec.email = ["ryan.morlok@morlok.com"]
 

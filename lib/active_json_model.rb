@@ -1,3 +1,3 @@
-module Activejsonmodel
+module ActiveJsonModel
   autoload :VERSION, "activejsonmodel/version"
 end

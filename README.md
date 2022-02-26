@@ -21,7 +21,7 @@ $ gem install activejsonmodel
 ```
 
 ```ruby
-require "activejsonmodel"
+require "active_json_model"
 ```
 
 ## Support
