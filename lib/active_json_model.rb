@@ -1,4 +1,4 @@
-require 'activemodel'
+require 'active_model'
 
 module ActiveJsonModel
   autoload :VERSION, "activejsonmodel/version"
