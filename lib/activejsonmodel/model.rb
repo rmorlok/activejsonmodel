@@ -1,6 +1,13 @@
 # frozen_string_literal: true
 
 require "active_support"
+require_relative './json_attribute'
+require_relative './after_load_callback'
+
+if defined?(::ActiveRecord)
+  require_relative './active_record_type'
+  require_relative './active_record_encrypted_type'
+end
 
 module ActiveJsonModel
   module Model
@@ -41,24 +48,120 @@ module ActiveJsonModel
             clear_changes_information
           end
         end
+      end
+    end
 
-        # Was this instance loaded from JSON?
-        # @return [Boolean] true if loaded from JSON, false otherwise
-        def loaded?
-          @_active_json_model_loaded
+    # Was this instance loaded from JSON?
+    # @return [Boolean] true if loaded from JSON, false otherwise
+    def loaded?
+      @_active_json_model_loaded
+    end
+
+    # Was this instance dumped to JSON?
+    # @return [Boolean] true if dumped to JSON, false otherwise
+    def dumped?
+      @_active_json_model_dumped
+    end
+
+    # Is this a new instance that was created without loading, and has yet to be dumped?
+    # @return [Boolean] true if new, false otherwise
+    def new?
+      !loaded? && !dumped?
+    end
+
+    # Load data for this instance from a JSON hash
+    #
+    # @param json_hash [Hash] hash of data to be loaded into a model instance
+    def load_from_json(json_hash)
+      # Record this object was loaded
+      @_active_json_model_loaded = true
+
+      # Cache fixed attributes
+      fixed_attributes = self.class.ancestry_active_json_model_fixed_attributes
+
+      # Iterate over all the allowed attributes
+      self.class.ancestry_active_json_model_attributes.each do |attr|
+        # The value that was set from the hash
+        json_value = json_hash[attr.name]
+
+        # Now translate the raw value into how it should interpreted
+        if fixed_attributes.key?(attr.name)
+          # Doesn't matter what the value was. Must confirm to the fixed value.
+          value = fixed_attributes[attr.name]
+        elsif !json_hash.key?(attr.name) && attr.default
+          value = attr.get_default_value
+        elsif attr.block && json_value
+          value = attr.block.call(json_value, json_hash)
+
+          # If supported, recursively allow the model to load from JSON
+          if value.respond_to?(:load_from_json)
+            value.load_from_json(json_value)
+          end
+        elsif attr.clazz && json_value
+          # Special case certain builtin types
+          if Integer == attr.clazz
+            value = json_value.to_i
+          elsif String == attr.clazz
+            value = json_value.to_s
+          elsif Symbol == attr.clazz
+            value = json_value.to_sym
+          elsif DateTime == attr.clazz
+            value = DateTime.iso8601(json_value)
+          elsif Date == attr.clazz
+            value = Date.iso8601(json_value)
+          else
+            value = attr.clazz.new
+
+            # If supported, recursively allow the model to load from JSON
+            if value.respond_to?(:load_from_json)
+              value.load_from_json(json_value)
+            end
+          end
+        else
+          value = json_value
         end
 
-        # Was this instance dumped to JSON?
-        # @return [Boolean] true if dumped to JSON, false otherwise
-        def dumped?
-          @_active_json_model_dumped
+        # Actually set the value on the instance
+        send("#{attr.name}=", value)
+      end
+
+      # Now that the load is complete, mark dirty tracking as clean
+      clear_changes_information
+
+      # Invoke any on-load callbacks
+      self.class.ancestry_active_json_model_load_callbacks.each do |cb|
+        cb.invoke(self)
+      end
+    end
+
+    def dump_to_json
+      # Record that the data has been dumped
+      @_active_json_model_dumped = true
+
+      # Get the attributes that are constants in the JSON rendering
+      fixed_attributes = self.class.ancestry_active_json_model_fixed_attributes
+
+      # Iterate over all the allowed attributes
+      self.class.ancestry_active_json_model_attributes.map do |attr|
+
+        # If it's a fixed attribute, that constant value is always used
+        if fixed_attributes.key?(attr.name)
+          # Get the fixed value
+          value = fixed_attributes[attr.name]
+        else
+          # Get the value from the underlying attribute from the instance
+          value = send(attr.name)
         end
 
-        # Is this a new instance that was created without loading, and has yet to be dumped?
-        # @return [Boolean] true if new, false otherwise
-        def new?
-          !loaded? && !dumped?
+        # Recurse if the value is itself an ActiveJsonModel
+        if value&.respond_to?(:dump_to_json)
+          value = value.dump_to_json
         end
+
+        [attr.name, value]
+      end.to_h.tap do |_|
+        # All changes are cleared after dump
+        clear_changes_information
       end
     end
 
@@ -258,6 +361,29 @@ module ActiveJsonModel
         @__active_json_model_polymorphic_factory = block
       end
 
+      # Computes the concrete class that should be used to load the data based on the ancestry tree's
+      # <code>json_polymorphic_via</code>. Also handles potential recursion at the leaf nodes of the tree.
+      #
+      # @param data [Hash] the data being loaded from JSON
+      # @return [Class] the class to be used to load the JSON
+      def active_json_model_concrete_class_from_ancestry_polymorphic(data)
+        clazz = nil
+        ancestry_active_json_model_polymorphic_factory.each do |proc|
+          clazz = proc.call(data)
+          break if clazz
+        end
+
+        if clazz
+          if clazz != self && clazz.respond_to?(:active_json_model_concrete_class_from_ancestry_polymorphic)
+            clazz.active_json_model_concrete_class_from_ancestry_polymorphic(data) || clazz
+          else
+            clazz
+          end
+        else
+          self
+        end
+      end
+
       # Register a new after load callback which is invoked after the instance is loaded from JSON
       #
       # @param method_name [Symbol, String] the name of the method to be invoked
@@ -272,103 +398,6 @@ module ActiveJsonModel
             block: block
           )
         )
-      end
-
-      # Load data for this instance from a JSON hash
-      #
-      # @param json_hash [Hash] hash of data to be loaded into a model instance
-      def load_from_json(json_hash)
-        # Record this object was loaded
-        @_active_json_model_loaded = true
-
-        # Cache fixed attributes
-        fixed_attributes = self.class.ancestry_active_json_model_fixed_attributes
-
-        # Iterate over all the allowed attributes
-        self.class.ancestry_active_json_model_attributes.each do |attr|
-          # The value that was set from the hash
-          json_value = json_hash[attr.name]
-
-          # Now translate the raw value into how it should interpreted
-          if fixed_attributes.key?(attr.name)
-            # Doesn't matter what the value was. Must confirm to the fixed value.
-            value = fixed_attributes[attr.name]
-          elsif !json_hash.key?(attr.name) && attr.default
-            value = attr.get_default_value
-          elsif attr.block && json_value
-            value = attr.block.call(json_value, json_hash)
-
-            # If supported, recursively allow the model to load from JSON
-            if value.respond_to?(:load_from_json)
-              value.load_from_json(json_value)
-            end
-          elsif attr.clazz && json_value
-            # Special case certain builtin types
-            case attr.clazz
-            when Integer
-              value = json_value.to_i
-            when String
-              value = json_value.to_s
-            when Symbol
-              value = json_value.to_sym
-            when DateTime
-              value = DateTime.iso8601(json_value)
-            when Date
-              value = Date.iso8601(json_value)
-            else
-              value = attr.clazz.new
-
-              # If supported, recursively allow the model to load from JSON
-              if value.respond_to?(:load_from_json)
-                value.load_from_json(json_value)
-              end
-            end
-          else
-            value = json_value
-          end
-
-          # Actually set the value on the instance
-          send("#{attr.name}=", value)
-        end
-
-        # Now that the load is complete, mark dirty tracking as clean
-        clear_changes_information
-
-        # Invoke any on-load callbacks
-        self.class.ancestry_active_json_model_load_callbacks.each do |cb|
-          cb.invoke(self)
-        end
-      end
-
-      def dump_to_json
-        # Record that the data has been dumped
-        @_active_json_model_dumped = true
-
-        # Get the attributes that are constants in the JSON rendering
-        fixed_attributes = self.ancestry_active_json_model_fixed_attributes
-
-        # Iterate over all the allowed attributes
-        self.class.ancestry_active_json_model_attributes.each do |attr|
-
-          # If it's a fixed attribute, that constant value is always used
-          if fixed_attributes.key?(attr.name)
-            # Get the fixed value
-            value = fixed_attributes[attr.name]
-          else
-            # Get the value from the underlying attribute from the instance
-            value = send(attr.name)
-          end
-
-          # Recurse if the value is itself an ActiveJsonModel
-          if value&.respond_to?(:dump_to_json)
-            value = value.dump_to_json
-          end
-
-          [attr.name, value]
-        end.to_h.tap do |_|
-          # All changes are cleared after dump
-          clear_changes_information
-        end
       end
 
       # Load an instance of the class from JSON
@@ -387,7 +416,11 @@ module ActiveJsonModel
           data = data.with_indifferent_access
         end
 
-        #TODO
+        # Get the concrete class from the ancestry tree's potential polymorphic behavior
+        clazz = active_json_model_concrete_class_from_ancestry_polymorphic(data)
+        clazz.new.tap do |instance|
+          instance.load_from_json(data)
+        end
       end
 
       # Dump the specified object to JSON
@@ -395,6 +428,7 @@ module ActiveJsonModel
       # @param obj [self] object to dump to json
       def dump(obj)
         raise ArgumentError.new("Expected #{self} got #{obj.class} to dump to JSON") unless obj.is_a?(self)
+        obj.dump_to_json
       end
     end
   end

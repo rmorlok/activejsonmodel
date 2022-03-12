@@ -2,8 +2,8 @@
 
 module ActiveJsonModel
   class AfterLoadCallback
-    attr_reader method_name
-    attr_reader block
+    attr_reader :method_name
+    attr_reader :block
 
     # Data holder for an after-load callback
     #

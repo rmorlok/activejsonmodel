@@ -15,11 +15,11 @@ module ActiveJsonModel
   #    # Returns instances of JsonAttribute
   #    Credentials.active_json_model_attributes
   class JsonAttribute
-    attr_reader name
-    attr_reader clazz
-    attr_reader default
-    attr_reader validation
-    attr_reader block
+    attr_reader :name
+    attr_reader :clazz
+    attr_reader :default
+    attr_reader :validation
+    attr_reader :block
 
     # Creates a record of a JSON-backed attribute
     #
