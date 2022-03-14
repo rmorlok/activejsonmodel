@@ -27,6 +27,9 @@ module ActiveJsonModel
         @_active_json_model_dumped = false
         @_active_json_model_loaded = false
 
+        # Register model validation to handle recursive validation into the model tree
+        validate :active_json_model_validate
+
         def initialize(**kwargs)
           # Apply default values values that weren't specified
           self.class.ancestry_active_json_model_attributes.filter{|attr| !attr.default.nil?}.each do |attr|
@@ -37,10 +40,11 @@ module ActiveJsonModel
             end
           end
 
-          # Force fixed attributes. These values can't actually be set to different values, so force them
-          # to come in as if they were property initialized. This will also override any values that the caller
-          # tried to pass in to set these values.
-          kwargs.merge!(self.class.ancestry_active_json_model_fixed_attributes)
+          # You cannot set the fixed JSON attributes by a setter method. Instead, initialize the member variable
+          # directly
+          self.class.ancestry_active_json_model_fixed_attributes.each do |k, v|
+            instance_variable_set("@#{k}", v)
+          end
 
           # Invoke the superclass constructor to let active model do the work of setting the attributes
           super(**kwargs).tap do |_|
@@ -141,16 +145,19 @@ module ActiveJsonModel
       # Get the attributes that are constants in the JSON rendering
       fixed_attributes = self.class.ancestry_active_json_model_fixed_attributes
 
-      # Iterate over all the allowed attributes
-      self.class.ancestry_active_json_model_attributes.map do |attr|
-
-        # If it's a fixed attribute, that constant value is always used
-        if fixed_attributes.key?(attr.name)
+      # Iterate over all the allowed attributes (fixed and regular)
+      [
+        self.class.ancestry_active_json_model_attributes.map(&:name),
+        self.class.ancestry_active_json_model_fixed_attributes.keys
+      ].flatten.map do |attr_name|
+        # If it's a fixed attribute, that constant value is always used. Note, we could get this from the instance
+        # method, but this protects against changing the member variable directly.
+        if fixed_attributes.key?(attr_name)
           # Get the fixed value
-          value = fixed_attributes[attr.name]
+          value = fixed_attributes[attr_name]
         else
           # Get the value from the underlying attribute from the instance
-          value = send(attr.name)
+          value = send(attr_name)
         end
 
         # Recurse if the value is itself an ActiveJsonModel
@@ -158,10 +165,28 @@ module ActiveJsonModel
           value = value.dump_to_json
         end
 
-        [attr.name, value]
+        [attr_name, value]
       end.to_h.tap do |_|
         # All changes are cleared after dump
         clear_changes_information
+      end
+    end
+
+    # Validate method that handles recursive validation into <code>json_attribute</code>s. Individual validations
+    # on attributes for this model will be handled by the standard mechanism.
+    def active_json_model_validate
+      self.class.active_json_model_attributes.each do |attr|
+        val = send(attr.name)
+
+        # Check if attribute value is an ActiveJsonModel
+        if val && val.respond_to?(:valid?)
+          # This call to <code>valid?</code> is important because it will actually trigger recursive validations
+          unless val.valid?
+            val.errors.each do |error|
+              errors.add("#{attr.name}.#{error.attribute}".to_sym, error.message)
+            end
+          end
+        end
       end
     end
 
@@ -235,7 +260,7 @@ module ActiveJsonModel
         self.active_json_model_ancestors.flat_map(&:active_json_model_load_callbacks)
       end
 
-      # Get all polymorphic factories in the ancestory chain.
+      # Get all polymorphic factories in the ancestry chain.
       #
       # @return [Array<Proc>] After load callbacks for the ancestry tree
       def ancestry_active_json_model_polymorphic_factory
@@ -287,6 +312,28 @@ module ActiveJsonModel
       # @param value [Object] the value to set the attribute to
       def json_fixed_attribute(name, value:)
         active_json_model_fixed_attributes[name.to_sym] = value
+
+        # We could handle fixed attributes as just a get method, but this approach keeps them consistent with the
+        # other attributes for things like changed tracking.
+        instance_variable_set("@#{name}", value)
+
+        # Define ActiveModel attribute methods (https://api.rubyonrails.org/classes/ActiveModel/AttributeMethods.html)
+        # for this class. E.g. reset_<name>
+        #
+        # Used for dirty tracking for the model.
+        #
+        # @see https://api.rubyonrails.org/classes/ActiveModel/AttributeMethods/ClassMethods.html#method-i-define_attribute_methods
+        define_attribute_methods name
+
+        # Define the getter for this attribute
+        attr_reader name
+
+        # Define the setter method to prevent the value from being changed.
+        define_method "#{name}=" do |v|
+          unless value == v
+            raise RuntimeError.new("#{self.class}.#{name} is an Active JSON Model fixed attribute with a value of '#{value}'. It's value cannot be set to '#{v}''.")
+          end
+        end
       end
 
       # Define a new attribute for the model that will be backed by a JSON attribute
