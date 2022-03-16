@@ -32,17 +32,19 @@ module ActiveJsonModel
 
         def initialize(**kwargs)
           # Apply default values values that weren't specified
-          self.class.ancestry_active_json_model_attributes.filter{|attr| !attr.default.nil?}.each do |attr|
+          self.class.active_json_model_attributes.filter{|attr| !attr.default.nil?}.each do |attr|
             unless kwargs.key?(attr.name)
-              if attr.default
-                kwargs[attr.name] = attr.get_default_value
-              end
+              # Set as an instance variable to avoid being recorded as a true set value
+              instance_variable_set("@#{attr.name}", attr.get_default_value)
+
+              # Record that the value is a default
+              instance_variable_set("@#{attr.name}_is_default", true)
             end
           end
 
           # You cannot set the fixed JSON attributes by a setter method. Instead, initialize the member variable
           # directly
-          self.class.ancestry_active_json_model_fixed_attributes.each do |k, v|
+          self.class.active_json_model_fixed_attributes.each do |k, v|
             instance_variable_set("@#{k}", v)
           end
 
@@ -93,13 +95,28 @@ module ActiveJsonModel
           # Doesn't matter what the value was. Must confirm to the fixed value.
           value = fixed_attributes[attr.name]
         elsif !json_hash.key?(attr.name) && attr.default
+          # Note that this logic reflects that an explicit nil value is not the same as not set. Only not set
+          # generates the default.
           value = attr.get_default_value
-        elsif attr.block && json_value
-          value = attr.block.call(json_value, json_hash)
+        elsif attr.load_proc && json_value
+          # Invoke the proc to get a value back. This gives the proc the opportunity to either generate a value
+          # concretely or return a class to use.
+          value = if attr.load_proc.arity == 2
+                    attr.load_proc.call(json_value, json_hash)
+                  else
+                    attr.load_proc.call(json_value)
+                  end
 
-          # If supported, recursively allow the model to load from JSON
-          if value.respond_to?(:load_from_json)
-            value.load_from_json(json_value)
+          if value
+            # If it's a class, new it up assuming it will support loading from JSON
+            if value.is_a?(Class)
+              value = value.new
+            end
+
+            # If supported, recursively allow the model to load from JSON
+            if value.respond_to?(:load_from_json)
+              value.load_from_json(json_value)
+            end
           end
         elsif attr.clazz && json_value
           # Special case certain builtin types
@@ -145,28 +162,47 @@ module ActiveJsonModel
       # Get the attributes that are constants in the JSON rendering
       fixed_attributes = self.class.ancestry_active_json_model_fixed_attributes
 
-      # Iterate over all the allowed attributes (fixed and regular)
-      [
-        self.class.ancestry_active_json_model_attributes.map(&:name),
-        self.class.ancestry_active_json_model_fixed_attributes.keys
-      ].flatten.map do |attr_name|
-        # If it's a fixed attribute, that constant value is always used. Note, we could get this from the instance
-        # method, but this protects against changing the member variable directly.
-        if fixed_attributes.key?(attr_name)
-          # Get the fixed value
-          value = fixed_attributes[attr_name]
-        else
-          # Get the value from the underlying attribute from the instance
-          value = send(attr_name)
-        end
+      key_values = []
+
+      self.class.ancestry_active_json_model_attributes.each do |attr|
+        # Skip on the off chance of a name collision between normal and fixed attributes
+        next if fixed_attributes.key?(attr.name)
+
+        # Don't render the value if it is a default and configured not to
+        next unless attr.render_default || !send("#{attr.name}_is_default?")
+
+        # Get the value from the underlying attribute from the instance
+        value = send(attr.name)
 
         # Recurse if the value is itself an ActiveJsonModel
         if value&.respond_to?(:dump_to_json)
           value = value.dump_to_json
         end
 
-        [attr_name, value]
-      end.to_h.tap do |_|
+        if attr.dump_proc
+          # Invoke the proc to do the translation
+          value = if attr.dump_proc.arity == 2
+                    attr.dump_proc.call(value, self)
+                  else
+                    attr.dump_proc.call(value)
+                  end
+        end
+
+        key_values.push([attr.name, value])
+      end
+
+      # Iterate over all the allowed attributes (fixed and regular)
+      fixed_attributes.each do |key, value|
+        # Recurse if the value is itself an ActiveJsonModel (unlikely)
+        if value&.respond_to?(:dump_to_json)
+          value = value.dump_to_json
+        end
+
+        key_values.push([key, value])
+      end
+
+      # Render the array of key-value pairs to a hash
+      key_values.to_h.tap do |_|
         # All changes are cleared after dump
         clear_changes_information
       end
@@ -341,9 +377,28 @@ module ActiveJsonModel
       # @param name [Symbol, String] the name of the attribute
       # @param clazz [Class] the Class to use to initialize the object type
       # @param default [Object] the default value for the attribute
+      # @param render_default [Boolean] should the default value be rendered to JSON? Default is true. Note this only
+      #        applies if the value has not be explicitly set. If explicitly set, the value renders, regardless of if
+      #        the value is the same as the default value.
       # @param validation [Object] object whose properties correspond to settings for active model validators
-      # @param block [Proc] TODO what does this do?
-      def json_attribute(name, clazz = nil, default: nil, validation: nil, &block)
+      # @param serialize_with [Proc] proc to generate a value from the value to be rendered to JSON. Given
+      #        <code>value</code> and <code>parent_model</code> (optional parameter) values. The value returned is
+      #        assumed to be a valid JSON value.
+      # @param deserialize_with [Proc] proc to deserialize a value from JSON. This is an alternative to passing a block
+      #        (<code>load_proc</code>) to the method and has the same semantics.
+      # @param load_proc [Proc] proc that allows the model to customize the value generated. The proc is passed
+      #        <code>value_json</code> and <code>parent_json</code>. <code>value_json</code> is the value for this
+      #        sub-property, and <code>parent_json</code> (optional parameter) is the json for the parent object. This
+      #        proc can either return a class or a concrete instance. If a class is returned, a new instance of the
+      #        class will be created on JSON load, and if supported, the sub-JSON will be loaded into it. If a concrete
+      #        value is returned, it is assumed this is the reconstructed value. This proc allows for simplified
+      #        polymorphic load behavior as well as custom deserialization.
+      def json_attribute(name, clazz = nil, default: nil, render_default: true, validation: nil,
+                         serialize_with: nil, deserialize_with: nil, &load_proc)
+        if deserialize_with && load_proc
+          raise ArgumentError.new("Cannot specify both deserialize_with and block to json_attribute")
+        end
+
         name = name.to_sym
 
         # Add the attribute to the collection of json attributes defined for this class
@@ -352,8 +407,10 @@ module ActiveJsonModel
             name: name,
             clazz: clazz,
             default: default,
+            render_default: render_default,
             validation: validation,
-            block: block
+            dump_proc: serialize_with,
+            load_proc: load_proc || deserialize_with
           )
         )
 
@@ -369,6 +426,8 @@ module ActiveJsonModel
         attr_reader name
 
         # Define the setter for this attribute with proper change tracking
+        #
+        # @param value [...] the value to set the attribute to
         define_method "#{name}=" do |value|
           # Trigger ActiveModle's change tracking system if the value is actually changing
           # @see https://stackoverflow.com/questions/23958170/understanding-attribute-will-change-method
@@ -376,6 +435,15 @@ module ActiveJsonModel
 
           # Set the value as a direct instance variable
           instance_variable_set("@#{name}", value)
+
+          # Record that the value is not a default
+          instance_variable_set("@#{name}_is_default", false)
+        end
+
+        # Check if the attribute is set to the default value. This implies this value has never been set.
+        # @return [Boolean] true if the value has been explicitly set or loaded, false otherwise
+        define_method "#{name}_is_default?" do
+          !!instance_variable_get("@#{name}_is_default")
         end
 
         if validation

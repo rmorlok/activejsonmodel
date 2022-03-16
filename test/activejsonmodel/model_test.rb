@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'base64'
 
 require_relative '../test_helper'
 
@@ -112,6 +113,20 @@ class ModelTest < Minitest::Test
     assert_equal original.a_recursive.foo, reconstructed.a_recursive.foo
   end
 
+  def test_not_default_without_default_value_specified
+    clazz = SingleAttribute
+
+    x = clazz.new
+    assert !x.foo_is_default?
+
+    y = clazz.new(foo: 'bar')
+    assert !y.foo_is_default?
+
+    z = clazz.new
+    z.foo = 'bar'
+    assert !z.foo_is_default?
+  end
+
   class DefaultFromConstant
     include ::ActiveJsonModel::Model
 
@@ -122,6 +137,7 @@ class ModelTest < Minitest::Test
     x = DefaultFromConstant.new
 
     assert_equal 'Bob Dole', x.name
+    assert x.name_is_default?
     assert_equal({name: 'Bob Dole'}, x.dump_to_json)
   end
 
@@ -135,6 +151,7 @@ class ModelTest < Minitest::Test
     x = DefaultFromCallable.new
 
     assert_equal 'Bob Dole', x.name
+    assert x.name_is_default?
     assert_equal({name: 'Bob Dole'}, x.dump_to_json)
   end
 
@@ -142,12 +159,38 @@ class ModelTest < Minitest::Test
     x = DefaultFromConstant.new(name: 'Jimmy Carter')
 
     assert_equal 'Jimmy Carter', x.name
+    assert !x.name_is_default?
     assert_equal({name: 'Jimmy Carter'}, x.dump_to_json)
+  end
 
-    y = DefaultFromCallable.new(name: 'Jimmy Carter')
+  def test_allows_default_to_be_overridden_by_setter
+    x = DefaultFromConstant.new
+    x.name = 'Jimmy Carter'
 
-    assert_equal 'Jimmy Carter', y.name
-    assert_equal({name: 'Jimmy Carter'}, y.dump_to_json)
+    assert_equal 'Jimmy Carter', x.name
+    assert !x.name_is_default?
+    assert_equal({name: 'Jimmy Carter'}, x.dump_to_json)
+  end
+
+  class DefaultNoRender
+    include ::ActiveJsonModel::Model
+
+    json_attribute :name, default: 'Bob Dole', render_default: false
+  end
+
+  def test_only_renders_non_default
+    x = DefaultNoRender.new
+
+    assert_equal 'Bob Dole', x.name
+    assert x.name_is_default?
+    assert_equal({}, x.dump_to_json)
+
+    # Setting the value explicitly does not constitute the default
+    x.name = 'Bob Dole'
+
+    assert_equal 'Bob Dole', x.name
+    assert !x.name_is_default?
+    assert_equal({name: 'Bob Dole'}, x.dump_to_json)
   end
 
   class SimpleAdditiveInheritanceParent
@@ -277,5 +320,130 @@ class ModelTest < Minitest::Test
       x = TextCell.new(value: 'foo')
       x.type = 'number'
     end
+  end
+
+  class NumberCell
+    include ::ActiveJsonModel::Model
+
+    json_fixed_attribute :type, value: 'number'
+    json_attribute :value, Integer
+  end
+
+  class CellHolder1
+    include ::ActiveJsonModel::Model
+
+    json_attribute :cell do |data|
+      if data[:type] == 'text'
+        TextCell
+      else
+        NumberCell
+      end
+    end
+  end
+
+  def test_polymorphic_attribute_via_block
+    data_text = {
+      cell: {
+        type: 'text',
+        value: 'foo'
+      }
+    }
+
+    data_number = {
+      cell: {
+        type: 'number',
+        value: 123
+      }
+    }
+
+    holder_text = CellHolder1.load(data_text)
+
+    assert_instance_of TextCell, holder_text.cell
+    assert_equal 'foo', holder_text.cell.value
+
+    holder_number = CellHolder1.load(data_number)
+
+    assert_instance_of NumberCell, holder_number.cell
+    assert_equal 123, holder_number.cell.value
+  end
+
+  class CellHolder2
+    include ::ActiveJsonModel::Model
+
+    json_attribute :cell do |data|
+      if data[:type] == 'text'
+        TextCell.new(value: data[:value])
+      else
+        NumberCell.new(value: data[:value])
+      end
+    end
+  end
+
+  def test_custom_load_attribute_via_block
+    data_text = {
+      cell: {
+        type: 'text',
+        value: 'foo'
+      }
+    }
+
+    data_number = {
+      cell: {
+        type: 'number',
+        value: 123
+      }
+    }
+
+    holder_text = CellHolder2.load(data_text)
+
+    assert_instance_of TextCell, holder_text.cell
+    assert_equal 'foo', holder_text.cell.value
+
+    holder_number = CellHolder2.load(data_number)
+
+    assert_instance_of NumberCell, holder_number.cell
+    assert_equal 123, holder_number.cell.value
+  end
+
+  class RoundTripSerialization1
+    include ::ActiveJsonModel::Model
+
+    json_attribute :base64val, serialize_with: ->(value){Base64.encode64(value)} do |data|
+      Base64.decode64(data)
+    end
+  end
+
+  class RoundTripSerialization2
+    include ::ActiveJsonModel::Model
+
+    json_attribute :base64val,
+                   serialize_with: ->(value){Base64.encode64(value)},
+                   deserialize_with: ->(value) {Base64.decode64(value)}
+  end
+
+  def test_serialization_round_trip
+    clazz = RoundTripSerialization1
+    x = clazz.new(base64val: 'Bob Dole')
+
+    assert_equal 'Bob Dole', x.base64val
+    assert_equal({base64val: "Qm9iIERvbGU=\n"}, x.dump_to_json)
+
+    data = ::JSON.dump(clazz.dump(x))
+    h = ::JSON.load(data)
+    reconstructed = clazz.load(h)
+
+    assert_equal 'Bob Dole', reconstructed.base64val
+
+    clazz = RoundTripSerialization2
+    x = clazz.new(base64val: 'Bob Dole')
+
+    assert_equal 'Bob Dole', x.base64val
+    assert_equal({base64val: "Qm9iIERvbGU=\n"}, x.dump_to_json)
+
+    data = ::JSON.dump(clazz.dump(x))
+    h = ::JSON.load(data)
+    reconstructed = clazz.load(h)
+
+    assert_equal 'Bob Dole', reconstructed.base64val
   end
 end
