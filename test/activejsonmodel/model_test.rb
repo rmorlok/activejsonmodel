@@ -328,6 +328,62 @@ class ModelTest < Minitest::Test
     end
   end
 
+  def test_fixed_attribute_cannot_be_set_from_load
+    x = TextCell.new
+    x.load_from_json({type: 'number', value: 'foo'})
+
+    assert_equal 'text', x.type
+  end
+
+  def test_tracking_new
+    assert TextCell.new.new?
+    assert !TextCell.load({'type' => 'text', 'value' => 'foo'}).new?
+  end
+
+  def test_tracking_loaded
+    assert !TextCell.new.loaded?
+    assert TextCell.load({'type' => 'text', 'value' => 'foo'}).loaded?
+  end
+
+  def test_tracking_dumped
+    assert !TextCell.new.dumped?
+    assert !TextCell.load({'type' => 'text', 'value' => 'foo'}).dumped?
+
+    x = TextCell.new
+    TextCell.dump(x)
+    assert x.dumped?
+
+    x = TextCell.new
+    x.dump_to_json
+    assert x.dumped?
+  end
+
+  def test_change_tracking_new
+    x = TextCell.new
+    assert !x.value_changed?
+
+    x.value = 'foo'
+    assert x.value_changed?
+
+    x.dump_to_json
+    assert !x.value_changed?
+
+    x.value = 'bar'
+    assert x.value_changed?
+    TextCell.dump(x)
+    assert !x.value_changed?
+    
+    x = TextCell.new(value: 'foo')
+    assert !x.value_changed?
+
+    x = TextCell.load({'type' => 'text', 'value' => 'foo'})
+    assert !x.value_changed?
+
+    x = TextCell.new
+    x.load_from_json({type: 'text', value: 'foo'})
+    assert !x.value_changed?
+  end
+
   class NumberCell
     include ::ActiveJsonModel::Model
 
