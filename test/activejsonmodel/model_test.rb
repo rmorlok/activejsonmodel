@@ -510,4 +510,36 @@ class ModelTest < Minitest::Test
       unenc.credential.secure = true
     end
   end
+
+  class AfterLoad1
+    include ::ActiveJsonModel::Model
+
+    attr_accessor :status
+
+    json_after_load do |obj|
+      obj.status = 'loaded'
+    end
+  end
+
+  class AfterLoad2
+    include ::ActiveJsonModel::Model
+
+    attr_accessor :status
+
+    json_after_load :loaded
+
+    def loaded
+      self.status = 'loaded'
+    end
+  end
+
+  def test_after_load_callback
+    clazz = AfterLoad1
+    x = clazz.load({})
+    assert_equal 'loaded', x.status
+
+    clazz = AfterLoad2
+    x = clazz.load({})
+    assert_equal 'loaded', x.status
+  end
 end

@@ -13,7 +13,7 @@ module ActiveJsonModel
       raise "ActiveJsonModel after load callback must either be a block or a method name" if method_name && block
       raise "ActiveJsonModel after load callback must either specify a block or method name" unless method_name || block
 
-      @method_name = method_name.to_sym
+      @method_name = method_name&.to_sym
       @block = block
     end
 
@@ -24,7 +24,11 @@ module ActiveJsonModel
       if method_name
         on_object.send(method_name)
       else
-        block.call
+        if block.arity == 1
+          block.call(on_object)
+        else
+          block.call
+        end
       end
     end
   end

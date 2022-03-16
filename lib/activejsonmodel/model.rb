@@ -516,7 +516,7 @@ module ActiveJsonModel
       # Register a new after load callback which is invoked after the instance is loaded from JSON
       #
       # @param method_name [Symbol, String] the name of the method to be invoked
-      # @param block [Proc] block to be executed after load
+      # @param block [Proc] block to be executed after load. Will optionally be passed an instance of the loaded object.
       def json_after_load(method_name=nil, &block)
         raise ArgumentError.new("Must specify method or block for ActiveJsonModel after load") unless method_name || block
         raise ArgumentError.new("Can only specify method or block for ActiveJsonModel after load") if method_name && block
