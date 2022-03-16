@@ -108,8 +108,14 @@ module ActiveJsonModel
                   end
 
           if value
-            # If it's a class, new it up assuming it will support loading from JSON
+            # If it's a class, new it up assuming it will support loading from JSON.
             if value.is_a?(Class)
+              # First check if it supports polymorphic behavior.
+              if value.respond_to?(:active_json_model_concrete_class_from_ancestry_polymorphic)
+                value = value.active_json_model_concrete_class_from_ancestry_polymorphic(json_value) || value
+              end
+
+              # New up an instance of the class for loading
               value = value.new
             end
 
@@ -131,7 +137,15 @@ module ActiveJsonModel
           elsif Date == attr.clazz
             value = Date.iso8601(json_value)
           else
-            value = attr.clazz.new
+            # First check if it supports polymorphic behavior.
+            clazz = if attr.clazz.respond_to?(:active_json_model_concrete_class_from_ancestry_polymorphic)
+                      value = attr.clazz.active_json_model_concrete_class_from_ancestry_polymorphic(json_value) || attr.clazz
+                    else
+                      attr.clazz
+                    end
+
+            # New up the instance
+            value = clazz.new
 
             # If supported, recursively allow the model to load from JSON
             if value.respond_to?(:load_from_json)
@@ -531,7 +545,8 @@ module ActiveJsonModel
           data = data.with_indifferent_access
         end
 
-        # Get the concrete class from the ancestry tree's potential polymorphic behavior
+        # Get the concrete class from the ancestry tree's potential polymorphic behavior. Note this needs to be done
+        # for each sub property as well. This just covers the outermost case.
         clazz = active_json_model_concrete_class_from_ancestry_polymorphic(data)
         clazz.new.tap do |instance|
           instance.load_from_json(data)

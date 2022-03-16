@@ -446,4 +446,68 @@ class ModelTest < Minitest::Test
 
     assert_equal 'Bob Dole', reconstructed.base64val
   end
+
+  class BaseCredential
+    include ::ActiveJsonModel::Model
+
+    json_attribute :secure
+    json_polymorphic_via do |data|
+      if data[:secure]
+        EncryptedCredential
+      else
+        Credential
+      end
+    end
+  end
+
+  class EncryptedCredential < BaseCredential
+    include ::ActiveJsonModel::Model
+
+    json_fixed_attribute :secure, value: true
+    json_attribute :encrypted_key, String
+  end
+
+  class Credential < BaseCredential
+    include ::ActiveJsonModel::Model
+
+    json_fixed_attribute :secure, value: false
+    json_attribute :key, String
+  end
+
+  class Integration
+    include ::ActiveJsonModel::Model
+
+    json_attribute :credential, BaseCredential
+  end
+
+  def test_json_polymorphic_via
+    encrypted_credential_data = {
+      credential: {
+        secure: true,
+        encrypted_key: 'asdfasfsd'
+      }
+    }
+
+    unencrypted_credential_data = {
+      credential: {
+        secure: false,
+        key: 'asdfasfsd'
+      }
+    }
+
+    enc = Integration.load(encrypted_credential_data)
+    assert_instance_of EncryptedCredential, enc.credential
+    assert_equal true, enc.credential.secure
+    assert_equal 'asdfasfsd', enc.credential.encrypted_key
+
+    unenc = Integration.load(unencrypted_credential_data)
+    assert_instance_of Credential, unenc.credential
+    assert_equal false, unenc.credential.secure
+    assert_equal 'asdfasfsd', unenc.credential.key
+
+    # Check that the override of the secure attribute is now not settable
+    assert_raises(RuntimeError) do
+      unenc.credential.secure = true
+    end
+  end
 end
