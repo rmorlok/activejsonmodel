@@ -75,6 +75,8 @@ class ModelTest < Minitest::Test
     json_attribute :b_string, String
     json_attribute :a_int
     json_attribute :b_int, Integer
+    json_attribute :a_float
+    json_attribute :b_float, Float
     json_attribute :a_datetime
     json_attribute :b_datetime, DateTime
     json_attribute :a_date
@@ -89,6 +91,8 @@ class ModelTest < Minitest::Test
       b_string: "b_string",
       a_int: 1,
       b_int: 2,
+      a_float: 1.23,
+      b_float: 3.1415,
       a_datetime: DateTime.new(2022, 11, 13, 11, 17, 59),
       b_datetime: DateTime.new(2021, 11, 13, 11, 17, 59),
       a_date: Date.new(2020, 3, 1),
@@ -105,6 +109,8 @@ class ModelTest < Minitest::Test
     assert_equal original.b_string, reconstructed.b_string
     assert_equal original.a_int, reconstructed.a_int
     assert_equal original.b_int, reconstructed.b_int
+    assert_equal original.a_float, reconstructed.a_float
+    assert_equal original.b_float, reconstructed.b_float
     assert_equal original.a_datetime.iso8601, reconstructed.a_datetime
     assert_equal original.b_datetime, reconstructed.b_datetime
     assert_equal original.a_date.iso8601, reconstructed.a_date

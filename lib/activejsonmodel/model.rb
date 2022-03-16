@@ -128,6 +128,8 @@ module ActiveJsonModel
           # Special case certain builtin types
           if Integer == attr.clazz
             value = json_value.to_i
+          elsif Float == attr.clazz
+            value = json_value.to_f
           elsif String == attr.clazz
             value = json_value.to_s
           elsif Symbol == attr.clazz
