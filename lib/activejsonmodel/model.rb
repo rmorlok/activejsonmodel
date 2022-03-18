@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "active_support"
+require 'active_support'
 require_relative './json_attribute'
 require_relative './after_load_callback'
 
@@ -22,6 +22,20 @@ module ActiveJsonModel
 
         # Make sure that it has dirty tracking
         include ::ActiveModel::Dirty unless include?(::ActiveModel::Dirty)
+
+        # Has this model changed? Override's <code>ActiveModel::Dirty</code>'s base behavior to properly handle
+        # recursive changes.
+        #
+        # @return [Boolean] true if any attribute has changed, false otherwise
+        def changed?
+          # Note: this method is implemented here versus in the module overall because if it is implemented in the
+          # module overall, it doesn't properly override the implementation for <code>ActiveModel::Dirty</code> that
+          # gets dynamically pulled in using the <code>included</code> hook.
+          super || self.class.ancestry_active_json_model_attributes.any? do |attr|
+            val = send(attr.name)
+            val&.respond_to?(:changed?) && val.changed?
+          end
+        end
 
         # For new/loaded tracking
         @_active_json_model_dumped = false
@@ -227,6 +241,8 @@ module ActiveJsonModel
     # Validate method that handles recursive validation into <code>json_attribute</code>s. Individual validations
     # on attributes for this model will be handled by the standard mechanism.
     def active_json_model_validate
+      errors.add(:values, 'ActiveJsonModel::Array values must be an array') unless values.is_a?(Array)
+
       self.class.active_json_model_attributes.each do |attr|
         val = send(attr.name)
 
@@ -274,24 +290,29 @@ module ActiveJsonModel
         end
       end
 
-      # Attributes that have been defined for thi class using <code>json_attribute</code>.
+      # Attributes that have been defined for this class using <code>json_attribute</code>.
       #
       # @return [Array<JsonAttribute>] Json attributes for this class
       def active_json_model_attributes
         @__active_json_model_attributes ||= []
       end
 
+      # A list of procs that will be executed after data has been loaded.
+      #
+      # @return [Array<Proc>] array of procs executed after data is loaded
       def active_json_model_load_callbacks
         @__active_json_model_load_callbacks ||= []
       end
 
       # A factory defined via <code>json_polymorphic_via</code> that allows the class to choose different concrete
       # classes based on the data in the JSON. Property is for only this class, not the entire class hierarchy.
+      #
+      # @ return [Proc, nil] proc used to select the concrete base class for the model class
       def active_json_model_polymorphic_factory
         @__active_json_model_polymorphic_factory
       end
 
-      # Filter the ancestor hierarchy to those built with ActiveJsonModel concerns
+      # Filter the ancestor hierarchy to those built with <code>ActiveJsonModel::Model</code> concerns
       #
       # @return [Array<Class>] reversed array of classes in the hierarchy of this class that include ActiveJsonModel
       def active_json_model_ancestors
@@ -346,14 +367,17 @@ module ActiveJsonModel
       # Example:
       #
       #    class BaseWorkflow
+      #      include ::ActiveJsonModel::Model
       #      json_attribute :name
       #    end
       #
       #    class EmailWorkflow < BaseWorkflow
+      #      include ::ActiveJsonModel::Model
       #      json_fixed_attribute :type, 'email'
       #    end
       #
       #    class WebhookWorkflow < BaseWorkflow
+      #      include ::ActiveJsonModel::Model
       #      json_fixed_attribute :type, 'webhook'
       #    end
       #
@@ -472,6 +496,8 @@ module ActiveJsonModel
       # Example:
       #
       #    class BaseWorkflow
+      #      include ::ActiveJsonModel::Model
+      #
       #      json_polymorphic_via do |data|
       #        if data[:type] == 'email'
       #          EmailWorkflow
@@ -482,10 +508,12 @@ module ActiveJsonModel
       #    end
       #
       #    class EmailWorkflow < BaseWorkflow
+      #      include ::ActiveJsonModel::Model
       #      json_fixed_attribute :type, 'email'
       #    end
       #
       #    class WebhookWorkflow < BaseWorkflow
+      #      include ::ActiveJsonModel::Model
       #      json_fixed_attribute :type, 'webhook'
       #    end
       def json_polymorphic_via(&block)

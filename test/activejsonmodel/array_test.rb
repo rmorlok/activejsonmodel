@@ -5,10 +5,68 @@ require 'base64'
 
 require_relative '../test_helper'
 
-class ModelTest < Minitest::Test
-  class NoAttributes
+class ArrayTest < Minitest::Test
+  class BaseCell
     include ::ActiveJsonModel::Model
+
+    json_attribute :type
+    json_attribute :value
+    json_polymorphic_via do |data|
+      if data[:type] == 'text'
+        TextCell
+      elsif data[:type] == 'number'
+        NumberCell
+      else
+        BaseCell
+      end
+    end
   end
+
+  class TextCell
+    include ::ActiveJsonModel::Model
+
+    json_fixed_attribute :type, value: 'text'
+    json_attribute :value, String
+  end
+
+  class NumberCell
+    include ::ActiveJsonModel::Model
+
+    json_fixed_attribute :type, value: 'number'
+    json_attribute :value, Integer
+  end
+
+  class CellArrayOf
+    include ::ActiveJsonModel::Array
+
+    json_array_of BaseCell
+  end
+
+  def test_array_of_polymorphic_model
+    clazz = CellArrayOf
+
+    arr = clazz.new(values: [
+      NumberCell.new(value: 1),
+      NumberCell.new(value: 2),
+      NumberCell.new(value: 3)
+    ])
+
+    assert_equal [
+                   {type: 'number', value: 1},
+                   {type: 'number', value: 2},
+                   {type: 'number', value: 3},
+                 ], arr.dump_to_json
+
+    data = ::JSON.dump(clazz.dump(arr))
+    h = ::JSON.load(data)
+    reconstructed = clazz.load(h)
+
+    assert reconstructed[0].is_a?(NumberCell)
+    assert_equal 3, reconstructed.length
+  end
+
+
+
 
   def test_no_attributes
     clazz = NoAttributes
