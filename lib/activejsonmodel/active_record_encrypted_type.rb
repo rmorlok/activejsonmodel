@@ -20,7 +20,7 @@ module ActiveJsonModel
     def cast(value)
       if value.is_a?(@clazz)
         value
-      elsif value.is_a?(Array)
+      elsif value.is_a?(::Array)
         @clazz.load(value)
       end
     end

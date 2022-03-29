@@ -22,14 +22,14 @@ class ArrayTest < Minitest::Test
     end
   end
 
-  class TextCell
+  class TextCell < BaseCell
     include ::ActiveJsonModel::Model
 
     json_fixed_attribute :type, value: 'text'
     json_attribute :value, String
   end
 
-  class NumberCell
+  class NumberCell < BaseCell
     include ::ActiveJsonModel::Model
 
     json_fixed_attribute :type, value: 'number'
@@ -47,13 +47,13 @@ class ArrayTest < Minitest::Test
 
     arr = clazz.new(values: [
       NumberCell.new(value: 1),
-      NumberCell.new(value: 2),
+      TextCell.new(value: "2"),
       NumberCell.new(value: 3)
     ])
 
     assert_equal [
                    {type: 'number', value: 1},
-                   {type: 'number', value: 2},
+                   {type: 'text', value: "2"},
                    {type: 'number', value: 3},
                  ], arr.dump_to_json
 
@@ -62,19 +62,83 @@ class ArrayTest < Minitest::Test
     reconstructed = clazz.load(h)
 
     assert reconstructed[0].is_a?(NumberCell)
+    assert reconstructed[1].is_a?(TextCell)
     assert_equal 3, reconstructed.length
+    assert_equal [1, '2', 3], reconstructed.map{|v| v.value}
   end
 
+  class CellArrayPolymorphicBy
+    include ::ActiveJsonModel::Array
 
+    json_polymorphic_array_by do |item_data|
+      if item_data[:type] == 'text'
+        TextCell
+      elsif item_data[:type] == 'number'
+        NumberCell
+      else
+        BaseCell
+      end
+    end
+  end
 
+  def test_array_polymorphic_by
+    clazz = CellArrayPolymorphicBy
 
-  def test_no_attributes
-    clazz = NoAttributes
+    arr = clazz.new(values: [
+      NumberCell.new(value: 1),
+      TextCell.new(value: "2"),
+      NumberCell.new(value: 3)
+    ])
+
+    assert_equal [
+                   {type: 'number', value: 1},
+                   {type: 'text', value: "2"},
+                   {type: 'number', value: 3},
+                 ], arr.dump_to_json
+
+    data = ::JSON.dump(clazz.dump(arr))
+    h = ::JSON.load(data)
+    reconstructed = clazz.load(h)
+
+    assert reconstructed[0].is_a?(NumberCell)
+    assert reconstructed[1].is_a?(TextCell)
+    assert_equal 3, reconstructed.length
+    assert_equal [1, '2', 3], reconstructed.map{|v| v.value}
+  end
+
+  class JsonArrayRot13Encrypted
+    include ::ActiveJsonModel::Array
+
+    json_array serialize: ->(s){ s.tr("abcdefghijklmnopqrstuvwxyz",
+                                      "nopqrstuvwxyzabcdefghijklm") },
+               deserialize: ->(s){ s.tr("abcdefghijklmnopqrstuvwxyz",
+                                        "nopqrstuvwxyzabcdefghijklm") }
+  end
+
+  def test_array_custom_serialization
+    clazz = JsonArrayRot13Encrypted
+
+    arr = clazz.new(%w[dog cat mouse])
+
+    assert_equal %w[qbt png zbhfr], arr.dump_to_json
+
+    data = ::JSON.dump(clazz.dump(arr))
+    h = ::JSON.load(data)
+    reconstructed = clazz.load(h)
+
+    assert_equal 3, reconstructed.length
+    assert_equal %w[dog cat mouse], reconstructed.values
+  end
+
+  def test_empty_array
+    clazz = CellArrayOf
 
     x = clazz.new
 
+    assert_equal [], x.values
+
     h = clazz.dump(x)
-    assert_equal({}, h)
+    assert_equal([], h)
 
     data = ::JSON.dump(h)
     h = ::JSON.load(data)
@@ -84,596 +148,486 @@ class ArrayTest < Minitest::Test
     assert_kind_of clazz, reconstructed
   end
 
-  class SingleAttribute
-    include ::ActiveJsonModel::Model
+  class ArrayNilStays
+    include ::ActiveJsonModel::Array
 
-    json_attribute :foo
+    json_array_of BaseCell, nil_data_to_empty_array: true
   end
 
-  def test_single_attribute_populated
-    clazz = SingleAttribute
+  def test_deserialize_nil
+    clazz = ArrayNilStays
 
-    x = clazz.new(foo: 'bar')
+    reconstructed = clazz.load(nil)
 
-    h = clazz.dump(x)
-    assert_equal({foo: 'bar'}, h)
+    assert_equal([], reconstructed.values)
+    assert !reconstructed.values_set?
 
-    data = ::JSON.dump(h)
-    h = ::JSON.load(data)
-    reconstructed = clazz.load(h)
+    clazz = CellArrayOf
 
-    assert_equal 'bar', reconstructed.foo
-  end
+    reconstructed = clazz.load(nil)
 
-  def test_single_attribute_nil
-    clazz = SingleAttribute
+    assert_nil reconstructed
 
-    x = clazz.new
-
-    h = clazz.dump(x)
-    assert_equal({foo: nil}, h)
-
-    data = ::JSON.dump(h)
-    h = ::JSON.load(data)
-    reconstructed = clazz.load(h)
-
-    assert_nil reconstructed.foo
-  end
-
-  class FullGenericModelB
-    include ::ActiveJsonModel::Model
-
-    json_attribute :foo
-  end
-
-  class FullGenericModelA
-    include ::ActiveJsonModel::Model
-
-    json_attribute :a_string
-    json_attribute :b_string, String
-    json_attribute :a_int
-    json_attribute :b_int, Integer
-    json_attribute :a_float
-    json_attribute :b_float, Float
-    json_attribute :a_datetime
-    json_attribute :b_datetime, DateTime
-    json_attribute :a_date
-    json_attribute :b_date, Date
-    json_attribute :a_symbol, Symbol
-    json_attribute :a_recursive, FullGenericModelB
-  end
-
-  def test_generic_roundrip
-    original = FullGenericModelA.new(
-      a_string: "a_string",
-      b_string: "b_string",
-      a_int: 1,
-      b_int: 2,
-      a_float: 1.23,
-      b_float: 3.1415,
-      a_datetime: DateTime.new(2022, 11, 13, 11, 17, 59),
-      b_datetime: DateTime.new(2021, 11, 13, 11, 17, 59),
-      a_date: Date.new(2020, 3, 1),
-      b_date: Date.new(2021, 4, 1),
-      a_symbol: :a_symbol,
-      a_recursive: FullGenericModelB.new(foo: 'foo')
-    )
-
-    data = ::JSON.dump(FullGenericModelA.dump(original))
-    h = ::JSON.load(data)
-    reconstructed = FullGenericModelA.load(h)
-
-    assert_equal original.a_string, reconstructed.a_string
-    assert_equal original.b_string, reconstructed.b_string
-    assert_equal original.a_int, reconstructed.a_int
-    assert_equal original.b_int, reconstructed.b_int
-    assert_equal original.a_float, reconstructed.a_float
-    assert_equal original.b_float, reconstructed.b_float
-    assert_equal original.a_datetime.iso8601, reconstructed.a_datetime
-    assert_equal original.b_datetime, reconstructed.b_datetime
-    assert_equal original.a_date.iso8601, reconstructed.a_date
-    assert_equal original.b_date, reconstructed.b_date
-    assert_equal original.a_symbol, reconstructed.a_symbol
-    assert_equal original.a_recursive.foo, reconstructed.a_recursive.foo
-  end
-
-  def test_not_default_without_default_value_specified
-    clazz = SingleAttribute
-
-    x = clazz.new
-    assert !x.foo_is_default?
-
-    y = clazz.new(foo: 'bar')
-    assert !y.foo_is_default?
-
-    z = clazz.new
-    z.foo = 'bar'
-    assert !z.foo_is_default?
-  end
-
-  class DefaultFromConstant
-    include ::ActiveJsonModel::Model
-
-    json_attribute :name, default: 'Bob Dole'
-  end
-
-  def test_sets_default_from_constant
-    x = DefaultFromConstant.new
-
-    assert_equal 'Bob Dole', x.name
-    assert x.name_is_default?
-    assert_equal({name: 'Bob Dole'}, x.dump_to_json)
-  end
-
-  class DefaultFromCallable
-    include ::ActiveJsonModel::Model
-
-    json_attribute :name, default: -> {'Bob Dole'}
-  end
-
-  def test_sets_default_from_callable
-    x = DefaultFromCallable.new
-
-    assert_equal 'Bob Dole', x.name
-    assert x.name_is_default?
-    assert_equal({name: 'Bob Dole'}, x.dump_to_json)
-  end
-
-  def test_allows_default_to_be_overridden_on_construction
-    x = DefaultFromConstant.new(name: 'Jimmy Carter')
-
-    assert_equal 'Jimmy Carter', x.name
-    assert !x.name_is_default?
-    assert_equal({name: 'Jimmy Carter'}, x.dump_to_json)
-  end
-
-  def test_allows_default_to_be_overridden_by_setter
-    x = DefaultFromConstant.new
-    x.name = 'Jimmy Carter'
-
-    assert_equal 'Jimmy Carter', x.name
-    assert !x.name_is_default?
-    assert_equal({name: 'Jimmy Carter'}, x.dump_to_json)
-  end
-
-  class DefaultNoRender
-    include ::ActiveJsonModel::Model
-
-    json_attribute :name, default: 'Bob Dole', render_default: false
-  end
-
-  def test_only_renders_non_default
-    x = DefaultNoRender.new
-
-    assert_equal 'Bob Dole', x.name
-    assert x.name_is_default?
-    assert_equal({}, x.dump_to_json)
-
-    # Setting the value explicitly does not constitute the default
-    x.name = 'Bob Dole'
-
-    assert_equal 'Bob Dole', x.name
-    assert !x.name_is_default?
-    assert_equal({name: 'Bob Dole'}, x.dump_to_json)
-  end
-
-  class SimpleAdditiveInheritanceParent
-    include ::ActiveJsonModel::Model
-
-    json_attribute :parent
-  end
-
-  class SimpleAdditiveInheritanceChild < SimpleAdditiveInheritanceParent
-    include ::ActiveJsonModel::Model
-
-    json_attribute :child
-  end
-
-  def test_simple_additive_inheritence
-    x = SimpleAdditiveInheritanceChild.new(parent: 'x', child: 'y')
-
-    assert_equal({parent: 'x', child: 'y'}, x.dump_to_json)
-
-    data = ::JSON.dump(SimpleAdditiveInheritanceChild.dump(x))
-    h = ::JSON.load(data)
-    reconstructed = SimpleAdditiveInheritanceChild.load(h)
-
-    assert_equal'x',  reconstructed.parent
-    assert_equal 'y', reconstructed.child
-    assert_equal SimpleAdditiveInheritanceChild, reconstructed.class
-  end
-
-  def test_dump_rejects_wrong_class
-    assert_raises(ArgumentError) do
-      SimpleAdditiveInheritanceChild.dump(DefaultFromConstant.new)
-    end
+    reconstructed = clazz.new
+    reconstructed.load_from_json(nil)
+    assert_nil reconstructed.values
+    assert !reconstructed.values_set?
   end
 
   def test_valid_by_default_without_validations
-    x = DefaultFromConstant.new
+    x = CellArrayOf.new
+    assert x.valid?
+    assert_empty x.errors
+
+    x << TextCell.new(value: 'foo')
+    assert x.valid?
+    assert_empty x.errors
+    assert_equal 1, x.length
+  end
+
+  class CustomValidatorArray
+    include ::ActiveJsonModel::Array
+
+    json_array_of BaseCell
+
+    validate :two_elements
+
+    def two_elements
+      errors.add(:values, 'Must have exactly 2 elements') unless length == 2
+    end
+  end
+
+  def test_custom_validation
+    x = CustomValidatorArray.new
+    assert !x.valid?
+    assert_equal 1, x.errors.count
+
+    x << TextCell.new(value: 'foo')
+    x << TextCell.new(value: 'bar')
     assert x.valid?
     assert_empty x.errors
   end
 
-  class RangeValidator
+  class OneOrTwoCell
     include ::ActiveJsonModel::Model
 
-    json_attribute :stars, Integer, validation: {inclusion: {in: 1..5}}
+    json_fixed_attribute :type, value: 'one-or-two'
+    json_attribute :value, Integer, validation: {inclusion: {in: 1..2}}
   end
 
-  def test_validations
-    x = RangeValidator.new(stars: 3)
+  class RecursiveValidatorArray
+    include ::ActiveJsonModel::Array
 
+    json_array_of OneOrTwoCell
+  end
+
+  def test_recursive_validation
+    x = RecursiveValidatorArray.new
     assert x.valid?
     assert_empty x.errors
 
-    x.stars = 6
+    x << OneOrTwoCell.new(value: 1)
+    assert x.valid?
+    assert_empty x.errors
 
+    x << OneOrTwoCell.new(value: 7)
     assert !x.valid?
     assert_equal 1, x.errors.count
   end
 
-  class ValidateParent
-    include ::ActiveJsonModel::Model
+  def test_validates_item_type
+    x = RecursiveValidatorArray.new
+    assert x.valid?
+    assert_empty x.errors
 
-    json_attribute :dummy
-    json_attribute :rating, RangeValidator
-  end
+    x << OneOrTwoCell.new(value: 1)
+    assert x.valid?
+    assert_empty x.errors
 
-  def test_recursive_validations
-    x = ValidateParent.new(
-      dummy: 'foo',
-      rating: RangeValidator.new(stars: 6)
-    )
-
+    x << TextCell.new(value: 'foo')
     assert !x.valid?
     assert_equal 1, x.errors.count
   end
 
-  class CustomValidate
-    include ::ActiveJsonModel::Model
-
-    json_attribute :dummy
-    json_attribute :rating, RangeValidator
-
-    validate :custom_validate
-
-    def custom_validate
-      errors.add(:dummy, "Dummy must have the value of 'dummy'") unless dummy == 'dummy'
-    end
-  end
-
-  def test_custom_validate
-    x = CustomValidate.new(
-      dummy: 'foo',
-      rating: RangeValidator.new(stars: 6)
-    )
-
-    assert !x.valid?
-    assert_equal 2, x.errors.count
-  end
-
-  class TextCell
-    include ::ActiveJsonModel::Model
-
-    json_fixed_attribute :type, value: 'text'
-    json_attribute :value, String
-  end
-
-  def test_fixed_attribute_renders
-    x = TextCell.new(value: 'foo')
-
-    assert_equal 'text', x.type
-    assert_equal 'foo', x.value
-    assert_equal({type: 'text', value: 'foo'}, x.dump_to_json)
-  end
-
-  def test_fixed_attribute_can_be_set_to_fixed_value
-    x = TextCell.new(type: 'text', value: 'foo')
-    x.type = 'text'
-    assert_equal 'text', x.type
-  end
-
-  def test_fixed_attribute_cannot_be_set
-    err_class = RuntimeError
-    assert_raises err_class do
-      TextCell.new(type: 'number', value: 'foo')
-    end
-
-    assert_raises err_class do
-      x = TextCell.new(value: 'foo')
-      x.type = 'number'
-    end
-  end
-
-  def test_fixed_attribute_cannot_be_set_from_load
-    x = TextCell.new
-    x.load_from_json({type: 'number', value: 'foo'})
-
-    assert_equal 'text', x.type
-  end
-
-  def test_tracking_new
-    assert TextCell.new.new?
-    assert !TextCell.load({'type' => 'text', 'value' => 'foo'}).new?
-  end
-
-  def test_tracking_loaded
-    assert !TextCell.new.loaded?
-    assert TextCell.load({'type' => 'text', 'value' => 'foo'}).loaded?
-  end
-
-  def test_tracking_dumped
-    assert !TextCell.new.dumped?
-    assert !TextCell.load({'type' => 'text', 'value' => 'foo'}).dumped?
-
-    x = TextCell.new
-    TextCell.dump(x)
-    assert x.dumped?
-
-    x = TextCell.new
-    x.dump_to_json
-    assert x.dumped?
-  end
-
-  def test_change_tracking_basic
-    x = TextCell.new
-    assert !x.value_changed?
-
-    x.value = 'foo'
-    assert x.value_changed?
-
-    x.dump_to_json
-    assert !x.value_changed?
-
-    x.value = 'bar'
-    assert x.value_changed?
-    TextCell.dump(x)
-    assert !x.value_changed?
-
-    x = TextCell.new(value: 'foo')
-    assert !x.value_changed?
-
-    x = TextCell.load({'type' => 'text', 'value' => 'foo'})
-    assert !x.value_changed?
-
-    x = TextCell.new
-    x.load_from_json({type: 'text', value: 'foo'})
-    assert !x.value_changed?
-  end
-
-  class NumberCell
-    include ::ActiveJsonModel::Model
-
-    json_fixed_attribute :type, value: 'number'
-    json_attribute :value, Integer
-  end
-
-  class CellHolder1
-    include ::ActiveJsonModel::Model
-
-    json_attribute :cell do |data|
-      if data[:type] == 'text'
-        TextCell
-      else
-        NumberCell
-      end
-    end
-  end
-
-  def test_change_tracking_recursive
-    x = CellHolder1.new(
-      cell: NumberCell.new(
-        value: 7
-      )
-    )
-
-    assert !x.changed?
-
-    x.cell.value = 8
-
-    assert x.changed?
-  end
-
-  def test_polymorphic_attribute_via_block
-    data_text = {
-      cell: {
-        type: 'text',
-        value: 'foo'
-      }
-    }
-
-    data_number = {
-      cell: {
-        type: 'number',
-        value: 123
-      }
-    }
-
-    holder_text = CellHolder1.load(data_text)
-
-    assert_instance_of TextCell, holder_text.cell
-    assert_equal 'foo', holder_text.cell.value
-
-    holder_number = CellHolder1.load(data_number)
-
-    assert_instance_of NumberCell, holder_number.cell
-    assert_equal 123, holder_number.cell.value
-  end
-
-  class CellHolder2
-    include ::ActiveJsonModel::Model
-
-    json_attribute :cell do |data|
-      if data[:type] == 'text'
-        TextCell.new(value: data[:value])
-      else
-        NumberCell.new(value: data[:value])
-      end
-    end
-  end
-
-  def test_custom_load_attribute_via_block
-    data_text = {
-      cell: {
-        type: 'text',
-        value: 'foo'
-      }
-    }
-
-    data_number = {
-      cell: {
-        type: 'number',
-        value: 123
-      }
-    }
-
-    holder_text = CellHolder2.load(data_text)
-
-    assert_instance_of TextCell, holder_text.cell
-    assert_equal 'foo', holder_text.cell.value
-
-    holder_number = CellHolder2.load(data_number)
-
-    assert_instance_of NumberCell, holder_number.cell
-    assert_equal 123, holder_number.cell.value
-  end
-
-  class RoundTripSerialization1
-    include ::ActiveJsonModel::Model
-
-    json_attribute :base64val, serialize_with: ->(value){Base64.encode64(value)} do |data|
-      Base64.decode64(data)
-    end
-  end
-
-  class RoundTripSerialization2
-    include ::ActiveJsonModel::Model
-
-    json_attribute :base64val,
-                   serialize_with: ->(value){Base64.encode64(value)},
-                   deserialize_with: ->(value) {Base64.decode64(value)}
-  end
-
-  def test_serialization_round_trip
-    clazz = RoundTripSerialization1
-    x = clazz.new(base64val: 'Bob Dole')
-
-    assert_equal 'Bob Dole', x.base64val
-    assert_equal({base64val: "Qm9iIERvbGU=\n"}, x.dump_to_json)
-
-    data = ::JSON.dump(clazz.dump(x))
-    h = ::JSON.load(data)
-    reconstructed = clazz.load(h)
-
-    assert_equal 'Bob Dole', reconstructed.base64val
-
-    clazz = RoundTripSerialization2
-    x = clazz.new(base64val: 'Bob Dole')
-
-    assert_equal 'Bob Dole', x.base64val
-    assert_equal({base64val: "Qm9iIERvbGU=\n"}, x.dump_to_json)
-
-    data = ::JSON.dump(clazz.dump(x))
-    h = ::JSON.load(data)
-    reconstructed = clazz.load(h)
-
-    assert_equal 'Bob Dole', reconstructed.base64val
-  end
-
-  class BaseCredential
-    include ::ActiveJsonModel::Model
-
-    json_attribute :secure
-    json_polymorphic_via do |data|
-      if data[:secure]
-        EncryptedCredential
-      else
-        Credential
-      end
-    end
-  end
-
-  class EncryptedCredential < BaseCredential
-    include ::ActiveJsonModel::Model
-
-    json_fixed_attribute :secure, value: true
-    json_attribute :encrypted_key, String
-  end
-
-  class Credential < BaseCredential
-    include ::ActiveJsonModel::Model
-
-    json_fixed_attribute :secure, value: false
-    json_attribute :key, String
-  end
-
-  class Integration
-    include ::ActiveJsonModel::Model
-
-    json_attribute :credential, BaseCredential
-  end
-
-  def test_json_polymorphic_via
-    encrypted_credential_data = {
-      credential: {
-        secure: true,
-        encrypted_key: 'asdfasfsd'
-      }
-    }
-
-    unencrypted_credential_data = {
-      credential: {
-        secure: false,
-        key: 'asdfasfsd'
-      }
-    }
-
-    enc = Integration.load(encrypted_credential_data)
-    assert_instance_of EncryptedCredential, enc.credential
-    assert_equal true, enc.credential.secure
-    assert_equal 'asdfasfsd', enc.credential.encrypted_key
-
-    unenc = Integration.load(unencrypted_credential_data)
-    assert_instance_of Credential, unenc.credential
-    assert_equal false, unenc.credential.secure
-    assert_equal 'asdfasfsd', unenc.credential.key
-
-    # Check that the override of the secure attribute is now not settable
-    assert_raises(RuntimeError) do
-      unenc.credential.secure = true
-    end
-  end
-
-  class AfterLoad1
-    include ::ActiveJsonModel::Model
-
-    attr_accessor :status
-
-    json_after_load do |obj|
-      obj.status = 'loaded'
-    end
-  end
-
-  class AfterLoad2
-    include ::ActiveJsonModel::Model
-
-    attr_accessor :status
-
-    json_after_load :loaded
-
-    def loaded
-      self.status = 'loaded'
-    end
-  end
-
-  def test_after_load_callback
-    clazz = AfterLoad1
-    x = clazz.load({})
-    assert_equal 'loaded', x.status
-
-    clazz = AfterLoad2
-    x = clazz.load({})
-    assert_equal 'loaded', x.status
-  end
+  # class RangeValidator
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_attribute :stars, Integer, validation: {inclusion: {in: 1..5}}
+  # end
+  #
+  # def test_validations
+  #   x = RangeValidator.new(stars: 3)
+  #
+  #   assert x.valid?
+  #   assert_empty x.errors
+  #
+  #   x.stars = 6
+  #
+  #   assert !x.valid?
+  #   assert_equal 1, x.errors.count
+  # end
+  #
+  # class ValidateParent
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_attribute :dummy
+  #   json_attribute :rating, RangeValidator
+  # end
+  #
+  # def test_recursive_validations
+  #   x = ValidateParent.new(
+  #     dummy: 'foo',
+  #     rating: RangeValidator.new(stars: 6)
+  #   )
+  #
+  #   assert !x.valid?
+  #   assert_equal 1, x.errors.count
+  # end
+  #
+  # class CustomValidate
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_attribute :dummy
+  #   json_attribute :rating, RangeValidator
+  #
+  #   validate :custom_validate
+  #
+  #   def custom_validate
+  #     errors.add(:dummy, "Dummy must have the value of 'dummy'") unless dummy == 'dummy'
+  #   end
+  # end
+  #
+  # def test_custom_validate
+  #   x = CustomValidate.new(
+  #     dummy: 'foo',
+  #     rating: RangeValidator.new(stars: 6)
+  #   )
+  #
+  #   assert !x.valid?
+  #   assert_equal 2, x.errors.count
+  # end
+  #
+  # class TextCell
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_fixed_attribute :type, value: 'text'
+  #   json_attribute :value, String
+  # end
+  #
+  # def test_fixed_attribute_renders
+  #   x = TextCell.new(value: 'foo')
+  #
+  #   assert_equal 'text', x.type
+  #   assert_equal 'foo', x.value
+  #   assert_equal({type: 'text', value: 'foo'}, x.dump_to_json)
+  # end
+  #
+  # def test_fixed_attribute_can_be_set_to_fixed_value
+  #   x = TextCell.new(type: 'text', value: 'foo')
+  #   x.type = 'text'
+  #   assert_equal 'text', x.type
+  # end
+  #
+  # def test_fixed_attribute_cannot_be_set
+  #   err_class = RuntimeError
+  #   assert_raises err_class do
+  #     TextCell.new(type: 'number', value: 'foo')
+  #   end
+  #
+  #   assert_raises err_class do
+  #     x = TextCell.new(value: 'foo')
+  #     x.type = 'number'
+  #   end
+  # end
+  #
+  # def test_fixed_attribute_cannot_be_set_from_load
+  #   x = TextCell.new
+  #   x.load_from_json({type: 'number', value: 'foo'})
+  #
+  #   assert_equal 'text', x.type
+  # end
+  #
+  # def test_tracking_new
+  #   assert TextCell.new.new?
+  #   assert !TextCell.load({'type' => 'text', 'value' => 'foo'}).new?
+  # end
+  #
+  # def test_tracking_loaded
+  #   assert !TextCell.new.loaded?
+  #   assert TextCell.load({'type' => 'text', 'value' => 'foo'}).loaded?
+  # end
+  #
+  # def test_tracking_dumped
+  #   assert !TextCell.new.dumped?
+  #   assert !TextCell.load({'type' => 'text', 'value' => 'foo'}).dumped?
+  #
+  #   x = TextCell.new
+  #   TextCell.dump(x)
+  #   assert x.dumped?
+  #
+  #   x = TextCell.new
+  #   x.dump_to_json
+  #   assert x.dumped?
+  # end
+  #
+  # def test_change_tracking_basic
+  #   x = TextCell.new
+  #   assert !x.value_changed?
+  #
+  #   x.value = 'foo'
+  #   assert x.value_changed?
+  #
+  #   x.dump_to_json
+  #   assert !x.value_changed?
+  #
+  #   x.value = 'bar'
+  #   assert x.value_changed?
+  #   TextCell.dump(x)
+  #   assert !x.value_changed?
+  #
+  #   x = TextCell.new(value: 'foo')
+  #   assert !x.value_changed?
+  #
+  #   x = TextCell.load({'type' => 'text', 'value' => 'foo'})
+  #   assert !x.value_changed?
+  #
+  #   x = TextCell.new
+  #   x.load_from_json({type: 'text', value: 'foo'})
+  #   assert !x.value_changed?
+  # end
+  #
+  # class NumberCell
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_fixed_attribute :type, value: 'number'
+  #   json_attribute :value, Integer
+  # end
+  #
+  # class CellHolder1
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_attribute :cell do |data|
+  #     if data[:type] == 'text'
+  #       TextCell
+  #     else
+  #       NumberCell
+  #     end
+  #   end
+  # end
+  #
+  # def test_change_tracking_recursive
+  #   x = CellHolder1.new(
+  #     cell: NumberCell.new(
+  #       value: 7
+  #     )
+  #   )
+  #
+  #   assert !x.changed?
+  #
+  #   x.cell.value = 8
+  #
+  #   assert x.changed?
+  # end
+  #
+  # def test_polymorphic_attribute_via_block
+  #   data_text = {
+  #     cell: {
+  #       type: 'text',
+  #       value: 'foo'
+  #     }
+  #   }
+  #
+  #   data_number = {
+  #     cell: {
+  #       type: 'number',
+  #       value: 123
+  #     }
+  #   }
+  #
+  #   holder_text = CellHolder1.load(data_text)
+  #
+  #   assert_instance_of TextCell, holder_text.cell
+  #   assert_equal 'foo', holder_text.cell.value
+  #
+  #   holder_number = CellHolder1.load(data_number)
+  #
+  #   assert_instance_of NumberCell, holder_number.cell
+  #   assert_equal 123, holder_number.cell.value
+  # end
+  #
+  # class CellHolder2
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_attribute :cell do |data|
+  #     if data[:type] == 'text'
+  #       TextCell.new(value: data[:value])
+  #     else
+  #       NumberCell.new(value: data[:value])
+  #     end
+  #   end
+  # end
+  #
+  # def test_custom_load_attribute_via_block
+  #   data_text = {
+  #     cell: {
+  #       type: 'text',
+  #       value: 'foo'
+  #     }
+  #   }
+  #
+  #   data_number = {
+  #     cell: {
+  #       type: 'number',
+  #       value: 123
+  #     }
+  #   }
+  #
+  #   holder_text = CellHolder2.load(data_text)
+  #
+  #   assert_instance_of TextCell, holder_text.cell
+  #   assert_equal 'foo', holder_text.cell.value
+  #
+  #   holder_number = CellHolder2.load(data_number)
+  #
+  #   assert_instance_of NumberCell, holder_number.cell
+  #   assert_equal 123, holder_number.cell.value
+  # end
+  #
+  # class RoundTripSerialization1
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_attribute :base64val, serialize_with: ->(value){Base64.encode64(value)} do |data|
+  #     Base64.decode64(data)
+  #   end
+  # end
+  #
+  # class RoundTripSerialization2
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_attribute :base64val,
+  #                  serialize_with: ->(value){Base64.encode64(value)},
+  #                  deserialize_with: ->(value) {Base64.decode64(value)}
+  # end
+  #
+  # def test_serialization_round_trip
+  #   clazz = RoundTripSerialization1
+  #   x = clazz.new(base64val: 'Bob Dole')
+  #
+  #   assert_equal 'Bob Dole', x.base64val
+  #   assert_equal({base64val: "Qm9iIERvbGU=\n"}, x.dump_to_json)
+  #
+  #   data = ::JSON.dump(clazz.dump(x))
+  #   h = ::JSON.load(data)
+  #   reconstructed = clazz.load(h)
+  #
+  #   assert_equal 'Bob Dole', reconstructed.base64val
+  #
+  #   clazz = RoundTripSerialization2
+  #   x = clazz.new(base64val: 'Bob Dole')
+  #
+  #   assert_equal 'Bob Dole', x.base64val
+  #   assert_equal({base64val: "Qm9iIERvbGU=\n"}, x.dump_to_json)
+  #
+  #   data = ::JSON.dump(clazz.dump(x))
+  #   h = ::JSON.load(data)
+  #   reconstructed = clazz.load(h)
+  #
+  #   assert_equal 'Bob Dole', reconstructed.base64val
+  # end
+  #
+  # class BaseCredential
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_attribute :secure
+  #   json_polymorphic_via do |data|
+  #     if data[:secure]
+  #       EncryptedCredential
+  #     else
+  #       Credential
+  #     end
+  #   end
+  # end
+  #
+  # class EncryptedCredential < BaseCredential
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_fixed_attribute :secure, value: true
+  #   json_attribute :encrypted_key, String
+  # end
+  #
+  # class Credential < BaseCredential
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_fixed_attribute :secure, value: false
+  #   json_attribute :key, String
+  # end
+  #
+  # class Integration
+  #   include ::ActiveJsonModel::Model
+  #
+  #   json_attribute :credential, BaseCredential
+  # end
+  #
+  # def test_json_polymorphic_via
+  #   encrypted_credential_data = {
+  #     credential: {
+  #       secure: true,
+  #       encrypted_key: 'asdfasfsd'
+  #     }
+  #   }
+  #
+  #   unencrypted_credential_data = {
+  #     credential: {
+  #       secure: false,
+  #       key: 'asdfasfsd'
+  #     }
+  #   }
+  #
+  #   enc = Integration.load(encrypted_credential_data)
+  #   assert_instance_of EncryptedCredential, enc.credential
+  #   assert_equal true, enc.credential.secure
+  #   assert_equal 'asdfasfsd', enc.credential.encrypted_key
+  #
+  #   unenc = Integration.load(unencrypted_credential_data)
+  #   assert_instance_of Credential, unenc.credential
+  #   assert_equal false, unenc.credential.secure
+  #   assert_equal 'asdfasfsd', unenc.credential.key
+  #
+  #   # Check that the override of the secure attribute is now not settable
+  #   assert_raises(RuntimeError) do
+  #     unenc.credential.secure = true
+  #   end
+  # end
+  #
+  # class AfterLoad1
+  #   include ::ActiveJsonModel::Model
+  #
+  #   attr_accessor :status
+  #
+  #   json_after_load do |obj|
+  #     obj.status = 'loaded'
+  #   end
+  # end
+  #
+  # class AfterLoad2
+  #   include ::ActiveJsonModel::Model
+  #
+  #   attr_accessor :status
+  #
+  #   json_after_load :loaded
+  #
+  #   def loaded
+  #     self.status = 'loaded'
+  #   end
+  # end
+  #
+  # def test_after_load_callback
+  #   clazz = AfterLoad1
+  #   x = clazz.load({})
+  #   assert_equal 'loaded', x.status
+  #
+  #   clazz = AfterLoad2
+  #   x = clazz.load({})
+  #   assert_equal 'loaded', x.status
+  # end
 end

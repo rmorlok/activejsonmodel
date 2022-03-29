@@ -33,7 +33,7 @@ module ActiveJsonModel
 
         # Most of the functionality gets delegated to the actual values array. This is almost all possible methods for
         # array, leaving off those that might be problems for equality checking, etc.
-        delegate :[], :try_convert, :&, :*, :+, :-, :<<, :<=>, :[], :[]=, :all?, :any?, :append, :assoc, :at, :bsearch,
+        delegate :try_convert, :&, :*, :+, :-, :<<, :<=>, :[], :[]=, :all?, :any?, :append, :assoc, :at, :bsearch,
                  :bsearch_index, :clear, :collect, :collect!, :combination, :compact, :compact!, :concat, :count,
                  :cycle, :deconstruct, :delete, :delete_at, :delete_if, :difference, :dig, :drop, :drop_while,
                  :each, :each_index, :empty?, :eql?, :fetch, :fill, :filter!, :find_index, :first, :flatten,
@@ -115,6 +115,12 @@ module ActiveJsonModel
       !loaded? && !dumped?
     end
 
+    # Have the values for this array actually be set, or a defaults coming through?
+    # @return [Boolean] true if the values have actually been set
+    def values_set?
+      !!@_active_json_model_values_set
+    end
+
     # Load array for this instance from a JSON array
     #
     # @param json_array [Array] array of data to be loaded into a model instance
@@ -123,9 +129,19 @@ module ActiveJsonModel
       @_active_json_model_loaded = true
 
       if json_array.nil?
-        values = nil
+        if self.class.active_json_model_array_serialization_tuple.nil_data_to_empty_array
+          self.values = []
+        else
+          self.values = nil
+        end
+
+        @_active_json_model_values_set = false
+
         return
       end
+
+      # Record that we have some sort of values set
+      @_active_json_model_values_set = true
 
       # Iterate over all the allowed attributes
       self.values = json_array.map do |json_val|
@@ -170,6 +186,8 @@ module ActiveJsonModel
     # Validate method that handles recursive validation into models in the array. Individual validations
     # on attributes for this model will be handled by the standard mechanism.
     def active_json_model_validate
+      errors.add(:values, 'ActiveJsonModel::Array values must be an array') unless values.is_a?(::Array)
+
       values.each_with_index do |val, i|
         # Check if attribute value is an ActiveJsonModel
         if val && val.respond_to?(:valid?)
@@ -179,6 +197,23 @@ module ActiveJsonModel
               errors.add("[#{i}].#{error.attribute}".to_sym, error.message)
             end
           end
+        end
+
+        if self.class.active_json_model_array_serialization_tuple.validate_proc
+
+          # It's a proc (likely lambda)
+          if self.class.active_json_model_array_serialization_tuple.validate_proc.arity == 4
+            # Handle the validator_for_item_type validotors that need to take the self as a param
+            # for recursive validators
+            self.class.active_json_model_array_serialization_tuple.validate_proc.call(val, i, errors, self)
+          else
+            self.class.active_json_model_array_serialization_tuple.validate_proc.call(val, i, errors)
+          end
+
+        elsif self.class.active_json_model_array_serialization_tuple.validate_method
+
+          # It's implemented as method on this object
+          send(self.class.active_json_model_array_serialization_tuple.validate_method, val, i)
         end
       end
     end
@@ -280,7 +315,17 @@ module ActiveJsonModel
       #    end
       #
       # @param clazz [Clazz] the class to use when loading model elements
-      def json_array_of(clazz)
+      # @param validate [Proc, symbol] Proc to use for validating elements of the array. May be a symbol to a method
+      #        implemented in the class. Arguments are value, index, errors object (if not method on class). Method
+      #        should add items to the errors array if there are errors, Note that if the elements of the array
+      #        implement the <code>valid?</code> and <code>errors</code> methods, those are used in addition to the
+      #        <code>validate</code> method.
+      # @param keep_nils [Boolean] Should the resulting array keep nils? Default is false and the array will be
+      #        compacted after deserialization.
+      # @param errors_go_to_nil [Boolean] Should excepts be trapped and converted to nil values? Default is true.
+      # @param nil_data_to_empty_array [Boolean] When deserializing data, should a nil value make the values array empty
+      #        (versus nil values, which will cause errors)
+      def json_array_of(clazz, validate: nil, keep_nils: false, errors_go_to_nil: true, nil_data_to_empty_array: false)
         unless clazz && clazz.is_a?(Class)
           raise ArgumentError.new("json_array_of must be passed a class to use as the type for elements of the array. Received '#{clazz}'")
         end
@@ -296,22 +341,34 @@ module ActiveJsonModel
         # Delegate the real work to a serialize/deserialize approach.
         if clazz == Integer
           json_array(serialize: ->(o){ o }, deserialize: ->(d){ d&.to_i },
-                     keep_nils: false, errors_go_to_nil: true)
+                     validate: validator_for_item_type(Integer, validate),
+                     keep_nils: keep_nils, errors_go_to_nil: errors_go_to_nil,
+                     nil_data_to_empty_array: nil_data_to_empty_array)
         elsif clazz == Float
           json_array(serialize: ->(o){ o }, deserialize: ->(d){ d&.to_f },
-                     keep_nils: false, errors_go_to_nil: true)
+                     validate: validator_for_item_type(Float, validate),
+                     keep_nils: keep_nils, errors_go_to_nil: errors_go_to_nil,
+                     nil_data_to_empty_array: nil_data_to_empty_array)
         elsif clazz == String
           json_array(serialize: ->(o){ o }, deserialize: ->(d){ d&.to_s },
-                     keep_nils: false, errors_go_to_nil: true)
+                     validate: validator_for_item_type(String, validate),
+                     keep_nils: keep_nils, errors_go_to_nil: errors_go_to_nil,
+                     nil_data_to_empty_array: nil_data_to_empty_array)
         elsif clazz == Symbol
           json_array(serialize: ->(o){ o&.to_s }, deserialize: ->(d){ d&.to_sym },
-                     keep_nils: false, errors_go_to_nil: true)
+                     validate: validator_for_item_type(Symbol, validate),
+                     keep_nils: keep_nils, errors_go_to_nil: errors_go_to_nil,
+                     nil_data_to_empty_array: nil_data_to_empty_array)
         elsif clazz == DateTime
           json_array(serialize: ->(o){ o&.iso8601 }, deserialize: ->(d){ DateTime.iso8601(d) },
-                     keep_nils: false, errors_go_to_nil: true)
+                     validate: validator_for_item_type(DateTime, validate),
+                     keep_nils: keep_nils, errors_go_to_nil: errors_go_to_nil,
+                     nil_data_to_empty_array: nil_data_to_empty_array)
         elsif clazz == Date
           json_array(serialize: ->(o){ o&.iso8601 }, deserialize: ->(d){ Date.iso8601(d) },
-                     keep_nils: false, errors_go_to_nil: true)
+                     validate: validator_for_item_type(Date, validate),
+                     keep_nils: keep_nils, errors_go_to_nil: errors_go_to_nil,
+                     nil_data_to_empty_array: nil_data_to_empty_array)
         else
           # This is the case where this is a Active JSON Model
           json_array(
@@ -336,8 +393,10 @@ module ActiveJsonModel
               nil
             end
           },
-            keep_nils: false,
-            errors_go_to_nil: false)
+            validate: validator_for_item_type(clazz, validate),
+            keep_nils: keep_nils,
+            errors_go_to_nil: errors_go_to_nil,
+            nil_data_to_empty_array: nil_data_to_empty_array)
         end
       end
 
@@ -362,8 +421,8 @@ module ActiveJsonModel
       #    class ContactInfoArray
       #      include ::ActiveJsonModel::Array
       #
-      #      json_polymorphic_array_by do |array_data|
-      #        if array_data.key?(:address)
+      #      json_polymorphic_array_by do |item_data|
+      #        if item_data.key?(:address)
       #          Email
       #        else
       #          PhoneNumber
@@ -371,7 +430,17 @@ module ActiveJsonModel
       #      end
       #    end
       # @param factory [Proc, String] that factory method to choose the appropriate class for each element.
-      def json_polymorphic_array_by(&factory)
+      # @param validate [Proc, symbol] Proc to use for validating elements of the array. May be a symbol to a method
+      #        implemented in the class. Arguments are value, index, errors object (if not method on class). Method
+      #        should add items to the errors array if there are errors, Note that if the elements of the array
+      #        implement the <code>valid?</code> and <code>errors</code> methods, those are used in addition to the
+      #        <code>validate</code> method.
+      # @param keep_nils [Boolean] Should the resulting array keep nils? Default is false and the array will be
+      #        compacted after deserialization.
+      # @param errors_go_to_nil [Boolean] Should excepts be trapped and converted to nil values? Default is true.
+      # @param nil_data_to_empty_array [Boolean] When deserializing data, should a nil value make the values array empty
+      #        (versus nil values, which will cause errors)
+      def json_polymorphic_array_by(validate: nil, keep_nils: false, errors_go_to_nil: false, nil_data_to_empty_array: false, &factory)
         unless factory && factory.arity == 1
           raise ArgumentError.new("Must pass block taking one argument to json_polymorphic_array_by")
         end
@@ -403,8 +472,10 @@ module ActiveJsonModel
             nil
           end
         },
-          keep_nils: false,
-          errors_go_to_nil: false)
+          validate: validate,
+          keep_nils: keep_nils,
+          errors_go_to_nil: errors_go_to_nil,
+          nil_data_to_empty_array: nil_data_to_empty_array)
       end
 
       # A JSON array that uses arbitrary serialzation/deserialization.
@@ -420,10 +491,18 @@ module ActiveJsonModel
       #        in the class.
       # @param deserialize [Proc, symbol] Proc to use for deserialization. May be a symbol to a method implemented
       #        in the class.
+      # @param validate [Proc, symbol] Proc to use for validating elements of the array. May be a symbol to a method
+      #        implemented in the class. Arguments are value, index, errors object (if not method on class). Method
+      #        should add items to the errors array if there are errors, Note that if the elements of the array
+      #        implement the <code>valid?</code> and <code>errors</code> methods, those are used in addition to the
+      #        <code>validate</code> method.
       # @param keep_nils [Boolean] Should the resulting array keep nils? Default is false and the array will be
       #        compacted after deserialization.
       # @param errors_go_to_nil [Boolean] Should excepts be trapped and converted to nil values? Default is true.
-      def json_array(serialize:, deserialize:, keep_nils: false, errors_go_to_nil: true)
+      # @param nil_data_to_empty_array [Boolean] When deserializing data, should a nil value make the values array empty
+      #        (versus nil values, which will cause errors)
+      def json_array(serialize:, deserialize:, validate: nil,
+                     keep_nils: false, errors_go_to_nil: true, nil_data_to_empty_array: false)
         unless serialize && (serialize.is_a?(Proc) || serialize.is_a?(Symbol))
           raise ArgumentError.new("Must specify serialize to json_array and it must be either a proc or a symbol to refer to a method in the class")
         end
@@ -457,8 +536,42 @@ module ActiveJsonModel
             t.deserialize_method = deserialize
           end
 
+          if validate
+            if validate.is_a?(Proc)
+              t.validate_proc = validate
+            else
+              t.validate_method = validate
+            end
+          end
+
           t.keep_nils = keep_nils
           t.errors_go_to_nil = errors_go_to_nil
+          t.nil_data_to_empty_array = nil_data_to_empty_array
+        end
+      end
+
+      # Crate a validator that can be used to check that items of the array of a specified type.
+      #
+      # @param clazz [Class] the type to check against
+      # @param recursive_validator [Proc, Symbol] an optional validator to be called in addition to this one
+      # @return [Proc] a proc to do the validation
+      def validator_for_item_type(clazz, recursive_validator=nil)
+        ->(val, i, errors, me) do
+          unless val&.is_a?(clazz)
+            errors.add(:values, "Element #{i} must be of type #{clazz} but is of type #{val&.class}")
+          end
+
+          if recursive_validator
+            if recursive_validator.is_a?(Proc)
+              if recursive_validator.arity == 4
+                recursive_validator.call(val, i, errors, me)
+              else
+                recursive_validator.call(val, i, errors)
+              end
+            else
+              me.send(recursive_validator, val, i)
+            end
+          end
         end
       end
 
@@ -543,11 +656,21 @@ module ActiveJsonModel
       # @return Instance of the list class
       def load(json_array_data)
         if json_array_data.nil? || (json_array_data.is_a?(String) && json_array_data.blank?)
-          return nil
+          clazz = active_json_model_concrete_class_from_ancestry_polymorphic([])
+          if clazz&.active_json_model_array_serialization_tuple&.nil_data_to_empty_array
+            return clazz.new.tap do |instance|
+              instance.load_from_json(nil)
+            end
+          else
+            return nil
+          end
         end
 
         # Get the array_data to a hash, regardless of the starting array_data type
         array_data = json_array_data.is_a?(String) ? JSON.parse(json_array_data) : json_array_data
+
+        # Recursively make the value have indifferent access
+        array_data = ::ActiveJsonModel::Utils.recursively_make_indifferent(array_data)
 
         # Get the concrete class from the ancestry tree's potential polymorphic behavior. Note this needs to be done
         # for each sub property as well. This just covers the outermost case.

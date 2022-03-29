@@ -241,8 +241,6 @@ module ActiveJsonModel
     # Validate method that handles recursive validation into <code>json_attribute</code>s. Individual validations
     # on attributes for this model will be handled by the standard mechanism.
     def active_json_model_validate
-      errors.add(:values, 'ActiveJsonModel::Array values must be an array') unless values.is_a?(Array)
-
       self.class.active_json_model_attributes.each do |attr|
         val = send(attr.name)
 
@@ -571,9 +569,8 @@ module ActiveJsonModel
         # Get the data to a hash, regardless of the starting data type
         data = json_data.is_a?(String) ? JSON.parse(json_data) : json_data
 
-        if data.respond_to?(:with_indifferent_access)
-          data = data.with_indifferent_access
-        end
+        # Recursively make the value have indifferent access
+        data = ::ActiveJsonModel::Utils.recursively_make_indifferent(data)
 
         # Get the concrete class from the ancestry tree's potential polymorphic behavior. Note this needs to be done
         # for each sub property as well. This just covers the outermost case.
