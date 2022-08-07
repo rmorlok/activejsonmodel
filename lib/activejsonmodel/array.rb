@@ -203,7 +203,7 @@ module ActiveJsonModel
 
           # It's a proc (likely lambda)
           if self.class.active_json_model_array_serialization_tuple.validate_proc.arity == 4
-            # Handle the validator_for_item_type validotors that need to take the self as a param
+            # Handle the validator_for_item_type validators that need to take the self as a param
             # for recursive validators
             self.class.active_json_model_array_serialization_tuple.validate_proc.call(val, i, errors, self)
           else
@@ -478,7 +478,7 @@ module ActiveJsonModel
           nil_data_to_empty_array: nil_data_to_empty_array)
       end
 
-      # A JSON array that uses arbitrary serialzation/deserialization.
+      # A JSON array that uses arbitrary serialization/deserialization.
       #
       # Example:
       #    class DateTimeArray

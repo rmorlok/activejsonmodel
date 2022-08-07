@@ -39,3 +39,41 @@ Everyone interacting in this project’s codebases, issue trackers, chat rooms a
 ## Contribution guide
 
 Pull requests are welcome!
+
+### Development Setup
+
+```bash
+brew install rbenv
+```
+
+Add the following to `~/.zshrc`:
+
+```bash
+RBENV=`which rbenv`
+if [ $RBENV ] ; then
+  export PATH=$HOME/.rbenv/bin:$PATH
+  eval "$(rbenv init -)"
+fi
+```
+
+Reload the `~/.zshrc`.
+
+Install development ruby version:
+
+```bash
+cat .ruby-version | xargs rbenv install
+```
+
+Exit and re-enter the directory to make sure the current version of ruby is used. Install dependencies:
+
+```bash
+bundle install
+```
+
+### Running Tests
+
+Active JSON Model uses [minitest](https://github.com/minitest/minitest). To run tests, use rake:
+
+```bash
+rake test
+```
