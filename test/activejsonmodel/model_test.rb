@@ -62,6 +62,59 @@ class ModelTest < Minitest::Test
     assert_nil reconstructed.foo
   end
 
+  class ParentSingleAttribute
+    include ::ActiveJsonModel::Model
+
+    json_attribute :bar, SingleAttribute
+  end
+
+  def test_recursive
+    clazz = ParentSingleAttribute
+    x = clazz.new(bar: SingleAttribute.new(foo: 'a'))
+
+    h = clazz.dump(x)
+    assert_equal({bar: {foo: 'a'}}, h)
+
+    data = ::JSON.dump(h)
+    h = ::JSON.load(data)
+    reconstructed = clazz.load(h)
+
+    assert_equal reconstructed.bar.foo, 'a'
+  end
+
+  def test_recursive_child_nil
+    clazz = ParentSingleAttribute
+    x = clazz.new
+
+    h = clazz.dump(x)
+    assert_equal({bar: nil}, h)
+
+    data = ::JSON.dump(h)
+    h = ::JSON.load(data)
+    reconstructed = clazz.load(h)
+
+    assert_nil reconstructed.bar
+  end
+
+  def test_base_nil
+    clazz = ParentSingleAttribute
+    h = clazz.load(nil)
+
+    assert_nil h
+  end
+
+  def test_base_invalid_value
+    clazz = ParentSingleAttribute
+
+    assert_raises ArgumentError do
+      clazz.load(17)
+    end
+
+    assert_raises ArgumentError do
+      clazz.load([])
+    end
+  end
+
   class FullGenericModelB
     include ::ActiveJsonModel::Model
 
@@ -611,10 +664,14 @@ class ModelTest < Minitest::Test
 
   def test_after_load_callback
     clazz = AfterLoad1
+    x = clazz.new
+    assert_nil x.status
     x = clazz.load({})
     assert_equal 'loaded', x.status
 
     clazz = AfterLoad2
+    x = clazz.new
+    assert_nil x.status
     x = clazz.load({})
     assert_equal 'loaded', x.status
   end

@@ -101,8 +101,13 @@ module ActiveJsonModel
 
       # Iterate over all the allowed attributes
       self.class.ancestry_active_json_model_attributes.each do |attr|
-        # The value that was set from the hash
-        json_value = json_hash[attr.name]
+        begin
+          # The value that was set from the hash
+          json_value = json_hash[attr.name]
+        rescue TypeError
+          raise ArgumentError.new("Invalid value specified for json_hash. Expected hash-like object received #{json_hash.class}")
+        end
+
 
         # Now translate the raw value into how it should interpreted
         if fixed_attributes.key?(attr.name)

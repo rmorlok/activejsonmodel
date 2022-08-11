@@ -53,7 +53,7 @@ module ActiveJsonModel
           # Note: this method is implemented here versus in the module overall because if it is implemented in the
           # module overall, it doesn't properly override the implementation for <code>ActiveModel::Dirty</code> that
           # gets dynamically pulled in using the <code>included</code> hook.
-          super || values&.any?{|val| val&.respond_to?(:changed?) && val.changed? }
+          super || values != @_active_json_model_original_values || values&.any?{|val| val&.respond_to?(:changed?) && val.changed? }
         end
 
         # For new/loaded tracking
@@ -79,6 +79,7 @@ module ActiveJsonModel
           super(**kwargs).tap do |_|
             # Clear out any recorded changes as this object is starting fresh
             clear_changes_information
+            @_active_json_model_original_values = self.values
           end
         end
 
@@ -140,6 +141,10 @@ module ActiveJsonModel
         return
       end
 
+      if !json_array.respond_to?(:map) || json_array.is_a?(Hash)
+        raise ArgumentError.new("Invalid value specified for json_array. Expected array-like object received #{json_array.class}")
+      end
+
       # Record that we have some sort of values set
       @_active_json_model_values_set = true
 
@@ -154,6 +159,7 @@ module ActiveJsonModel
 
       # Now that the load is complete, mark dirty tracking as clean
       clear_changes_information
+      @_active_json_model_original_values = self.values
 
       # Invoke any on-load callbacks
       self.class.ancestry_active_json_model_load_callbacks.each do |cb|
@@ -177,9 +183,10 @@ module ActiveJsonModel
         else
           send(self.class.active_json_model_array_serialization_tuple.deserialize_method, val)
         end
-      end.tap do |_|
+      end.tap do |vals|
         # All changes are cleared after dump
         clear_changes_information
+        @_active_json_model_original_values = vals
       end
     end
 
