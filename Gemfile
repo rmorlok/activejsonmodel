@@ -10,9 +10,10 @@ gem "rubocop-minitest", "0.17.1"
 gem "rubocop-packaging", "0.5.1"
 gem "rubocop-performance", "1.13.2"
 gem "rubocop-rake", "0.6.0"
-gem 'symmetric-encryption', '~> 4.5'
-gem 'activerecord', '~> 7.0'
+gem "symmetric-encryption", "~> 4.5"
+gem "activerecord", "~> 7.0"
+gem "bundler", ">= 1.0.0"
 
 group :test do
-  gem 'simplecov'
+  gem "simplecov"
 end
