@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.summary = "Active model objects that can be serialized to JSON"
   spec.homepage = "https://github.com/rmorlok/activejsonmodel"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 2.6.0"
+  spec.required_ruby_version = ">= 2.7.0"
 
   spec.metadata = {
     "bug_tracker_uri" => "https://github.com/rmorlok/activejsonmodel/issues",

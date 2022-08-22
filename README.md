@@ -1,7 +1,7 @@
 # Active JSON Model
 
 [![Gem Version](https://badge.fury.io/rb/activejsonmodel.svg)](https://rubygems.org/gems/activejsonmodel)
-![Github Actions CI](https://github.com/rmorlok/activejsonmodel/actions/workflows/ci.yaml/badge.svg)]
+![Github Actions CI](https://github.com/rmorlok/activejsonmodel/actions/workflows/ci.yaml/badge.svg)
 
 A library for creating Active Models that can serialize/deserialize to JSON. This includes full support for validation
 and change detection through nested models.
