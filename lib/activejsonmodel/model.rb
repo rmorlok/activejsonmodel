@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'active_support'
+require 'json'
 require_relative './json_attribute'
 require_relative './after_load_callback'
 
@@ -572,7 +573,7 @@ module ActiveJsonModel
         end
 
         # Get the data to a hash, regardless of the starting data type
-        data = json_data.is_a?(String) ? JSON.parse(json_data) : json_data
+        data = json_data.is_a?(String) ? ::JSON.parse(json_data) : json_data
 
         # Recursively make the value have indifferent access
         data = ::ActiveJsonModel::Utils.recursively_make_indifferent(data)
