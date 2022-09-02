@@ -1,4 +1,8 @@
-require_relative "lib/active_json_model/version"
+# encoding: utf-8
+lib = File.expand_path('../lib', __FILE__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+
+require "active_json_model/version"
 
 Gem::Specification.new do |spec|
   spec.name = "activejsonmodel"
@@ -7,6 +11,14 @@ Gem::Specification.new do |spec|
   spec.email = ["ryan.morlok@morlok.com"]
 
   spec.summary = "Active model objects that can be serialized to JSON"
+  spec.description = <<~EOF
+A library for creating Active Models that can serialize/deserialize to JSON. This includes full support for validation
+and change detection through nested models. You can write polymorphic models or arrays of models and get full support
+for natural serialization.
+
+Active JSON Model can optionally be combined with Active Record to create nested child models via JSON/JSONB columns.
+EOF
+
   spec.homepage = "https://github.com/rmorlok/activejsonmodel"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 2.7.0"
