@@ -275,7 +275,7 @@ module ActiveJsonModel
         #
         # Note that this data would be stored as jsonb in the database
         def attribute_type
-          @attribute_type ||= ActiveModelJsonSerializableType.new(self)
+          @attribute_type ||= ActiveRecordType.new(self)
         end
 
         # Allow this model to be used as ActiveRecord attribute type in Rails 5+.
@@ -290,7 +290,7 @@ module ActiveJsonModel
         # Note that this data would be stored as a string in the database, encrypted using
         # a symmetric key at the application level.
         def encrypted_attribute_type
-          @encrypted_attribute_type ||= ActiveModelJsonSerializableEncryptedType.new(self)
+          @encrypted_attribute_type ||= ActiveRecordEncryptedType.new(self)
         end
       end
 
