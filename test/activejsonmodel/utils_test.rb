@@ -40,6 +40,6 @@ class UtilsTest < Minitest::Test
   end
 
   def test_array
-    assert_equal 'bar', ::ActiveJsonModel::Utils.recursively_make_indifferent([{"foo" => "bar"}])[0][:foo]
+    assert_equal 'bar', ::ActiveJsonModel::Utils.recursively_make_indifferent([{ "foo" => "bar"}])[0][:foo]
   end
 end

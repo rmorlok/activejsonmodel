@@ -7,7 +7,7 @@ SimpleCov.start do
 end
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
-require "active_json_model"
+require "activejsonmodel"
 
 require "minitest/autorun"
 Dir[File.expand_path("support/**/*.rb", __dir__)].sort.each { |rb| require(rb) }

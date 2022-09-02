@@ -28,15 +28,16 @@ $ gem install activejsonmodel
 If not using in an auto-loading context (i.e. Rails), import it:
 
 ```ruby
-require "active_json_model"
+require "activejsonmodel"
 ```
 
 define a model:
 
 ```ruby
+
 class Point
   include ActiveJsonModel::Model
-  
+
   json_attribute :x, Integer
   json_attribute :y, Integer
 end
@@ -80,14 +81,15 @@ point3 = Point.load("{\"x\":12,\"y\":19}")
 nest models:
 
 ```ruby
+
 class Rectangle
   include ActiveJsonModel::Model
 
   json_attribute :top_left, Point
   json_attribute :bottom_right, Point
-  
+
   def contains(point)
-    point.x >= top_left.x && 
+    point.x >= top_left.x &&
       point.x <= bottom_right.x &&
       point.y <= top_left.y &&
       point.y >= bottom_right.y
@@ -195,7 +197,7 @@ Done installing documentation for activejsonmodel after 0 seconds
 1 gem installed
 
 $ irb
-irb(main):001:0> require 'active_json_model'
+irb(main):001:0> require 'activejsonmodel'
 => true 
 ```
 
@@ -214,12 +216,12 @@ end
 
 ```bash
 $ rake release
-active_json_model x.x.x built to pkg/active_json_model-x.x.x.gem.
+activejsonmodel x.x.x built to pkg/activejsonmodel-x.x.x.gem.
 Tagged vx.x.x.
 Pushed git commits and release tag.
 Pushing gem to https://rubygems.org...
-Successfully registered gem: active_json_model (x.x.x)
-Pushed active_json_model x.x.x to rubygems.org
+Successfully registered gem: activejsonmodel (x.x.x)
+Pushed activejsonmodel x.x.x to rubygems.org
 Don't forget to publish the release on GitHub!
 ```
 
