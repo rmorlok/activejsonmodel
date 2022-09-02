@@ -2,7 +2,7 @@
 
 require 'test_helper'
 
-class ActivejsonmodelTest < Minitest::Test
+class ActiveJsonModelTest < Minitest::Test
   def test_that_it_has_a_version_number
     refute_nil ::ActiveJsonModel::VERSION
   end

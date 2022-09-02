@@ -187,11 +187,11 @@ rake build
 Install the gem locally and import it:
 
 ```bash
-$ gem install ./pkg/activejsonmodel-x.x.x.gem
-Successfully installed activejsonmodel-x.x.x
-Parsing documentation for activejsonmodel-x.x.x
-Installing ri documentation for activejsonmodel-x.x.x
-Done installing documentation for activejsonmodel after 0 seconds
+$ gem install ./pkg/active_json_model-x.x.x.gem
+Successfully installed active_json_model-x.x.x
+Parsing documentation for active_json_model-x.x.x
+Installing ri documentation for active_json_model-x.x.x
+Done installing documentation for active_json_model after 0 seconds
 1 gem installed
 
 $ irb
@@ -214,12 +214,12 @@ end
 
 ```bash
 $ rake release
-activejsonmodel x.x.x built to pkg/activejsonmodel-x.x.x.gem.
+active_json_model x.x.x built to pkg/active_json_model-x.x.x.gem.
 Tagged vx.x.x.
 Pushed git commits and release tag.
 Pushing gem to https://rubygems.org...
-Successfully registered gem: activejsonmodel (x.x.x)
-Pushed activejsonmodel x.x.x to rubygems.org
+Successfully registered gem: active_json_model (x.x.x)
+Pushed active_json_model x.x.x to rubygems.org
 Don't forget to publish the release on GitHub!
 ```
 
