@@ -187,11 +187,11 @@ rake build
 Install the gem locally and import it:
 
 ```bash
-$ gem install ./pkg/active_json_model-x.x.x.gem
-Successfully installed active_json_model-x.x.x
-Parsing documentation for active_json_model-x.x.x
-Installing ri documentation for active_json_model-x.x.x
-Done installing documentation for active_json_model after 0 seconds
+$ gem install ./pkg/activejsonmodel-x.x.x.gem
+Successfully installed activejsonmodel-x.x.x
+Parsing documentation for activejsonmodel-x.x.x
+Installing ri documentation for activejsonmodel-x.x.x
+Done installing documentation for activejsonmodel after 0 seconds
 1 gem installed
 
 $ irb

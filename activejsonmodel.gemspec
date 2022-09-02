@@ -1,20 +1,20 @@
 require_relative "lib/active_json_model/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "active_json_model"
+  spec.name = "activejsonmodel"
   spec.version = ActiveJsonModel::VERSION
   spec.authors = ["Ryan Morlok"]
   spec.email = ["ryan.morlok@morlok.com"]
 
   spec.summary = "Active model objects that can be serialized to JSON"
-  spec.homepage = "https://github.com/rmorlok/active_json_model"
+  spec.homepage = "https://github.com/rmorlok/activejsonmodel"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 2.7.0"
 
   spec.metadata = {
-    "bug_tracker_uri" => "https://github.com/rmorlok/active_json_model/issues",
-    "changelog_uri" => "https://github.com/rmorlok/active_json_model/releases",
-    "source_code_uri" => "https://github.com/rmorlok/active_json_model",
+    "bug_tracker_uri" => "https://github.com/rmorlok/activejsonmodel/issues",
+    "changelog_uri" => "https://github.com/rmorlok/activejsonmodel/releases",
+    "source_code_uri" => "https://github.com/rmorlok/activejsonmodel",
     "homepage_uri" => spec.homepage,
     "rubygems_mfa_required" => "true"
   }
