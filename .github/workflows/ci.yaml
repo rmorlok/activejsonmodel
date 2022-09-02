@@ -35,7 +35,7 @@ jobs:
     strategy:
       matrix:
         # This is pinned because rails has it pinned in the activejsonmodel-rails-test repo
-        ruby-version: [ '3.0' ]
+        ruby-version: [ '3.1' ]
 
     steps:
       - uses: actions/checkout@v3
