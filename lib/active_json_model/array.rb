@@ -6,7 +6,7 @@ require 'active_support'
 require_relative './json_attribute'
 require_relative './after_load_callback'
 
-if defined?(::ActiveRecord)
+if Gem.find_files("active_record").any?
   require_relative './active_record_type'
   require_relative './active_record_encrypted_type'
 end
@@ -238,7 +238,11 @@ module ActiveJsonModel
         #
         # Note that this array_data would be stored as jsonb in the database
         def attribute_type
-          @attribute_type ||= ActiveRecordType.new(self)
+          if Gem.find_files("active_record").any?
+            @attribute_type ||= ::ActiveJsonModel::ActiveRecordType.new(self)
+          else
+            raise RuntimeError.new('ActiveRecord must be installed to use attribute_type')
+          end
         end
 
         # Allow this model to be used as ActiveRecord attribute type in Rails 5+.
@@ -253,7 +257,15 @@ module ActiveJsonModel
         # Note that this array_data would be stored as a string in the database, encrypted using
         # a symmetric key at the application level.
         def encrypted_attribute_type
-          @encrypted_attribute_type ||= ActiveRecordEncryptedType.new(self)
+          if Gem.find_files("active_record").any?
+            if Gem.find_files("symmetric-encryption").any?
+              @encrypted_attribute_type ||= ::ActiveJsonModel::ActiveRecordEncryptedType.new(self)
+            else
+              raise RuntimeError.new('symmetric-encryption must be installed to use attribute_type')
+            end
+          else
+            raise RuntimeError.new('active_record must be installed to use attribute_type')
+          end
         end
       end
 
