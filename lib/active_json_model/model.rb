@@ -559,6 +559,18 @@ module ActiveJsonModel
         end
       end
 
+      # Convert a value that might already be an instance of this class from underlying data.
+      # Used to delegate potential loading from ActiveRecord attributes
+      #
+      # @param val either an instance of this model or a Hash like object
+      def active_json_model_cast(val)
+        if val.is_a?(self)
+          val
+        elsif val.is_a?(::Hash) || val.is_a?(::HashWithIndifferentAccess)
+          self.load(val)
+        end
+      end
+
       # Register a new after load callback which is invoked after the instance is loaded from JSON
       #
       # @param method_name [Symbol, String] the name of the method to be invoked
