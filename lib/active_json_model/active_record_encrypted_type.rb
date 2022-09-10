@@ -38,13 +38,9 @@ if Gem.find_files("symmetric-encryption").any? &&
         :string
       end
 
-      def cast(value)
-        @clazz.active_json_model_cast(value)
-      end
-
       def deserialize(value)
         if String === value
-            decoded = SymmetricEncryption.decrypt(value, type: :json) rescue nil
+          decoded = SymmetricEncryption.decrypt(value, type: :json) rescue nil
           @clazz.load(decoded)
         else
           super
