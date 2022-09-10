@@ -48,14 +48,13 @@ if Gem.find_files("symmetric-encryption").any? &&
       end
 
       def serialize(value)
-        case value
-        when @clazz
+        if value.respond_to?(:dump_to_json)
           SymmetricEncryption.encrypt(
-            @clazz.dump(value),
+            value.dump_to_json,
             random_iv: true,
             type: :json
           )
-        when ::Hash, ::HashWithIndifferentAccess, ::Array
+        elsif ::Hash === value ||  ::HashWithIndifferentAccess === value || ::Array === value
           SymmetricEncryption.encrypt(
             value,
             random_iv: true,
