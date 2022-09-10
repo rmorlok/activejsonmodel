@@ -18,25 +18,29 @@ if Gem.find_files("symmetric-encryption").any? &&
     #      end
     #    end
     #
-    #    class Integration < ActiveRecord::Base
+    #    class User < ActiveRecord::Base
     #      attribute :credentials, Credentials.encrypted_attribute_type
     #    end
+    #
+    # Alternatively, the type can be registered ahead of time:
+    #
+    #    # config/initializers/types.rb
+    #    ActiveRecord::Type.register(:credentials_encrypted_type, Credentials.encrypted_attribute_type)
+    #
+    # Then the custom type can be used as:
+    #
+    #    class User < ActiveRecord::Base
+    #      attribute :credentials, :credentials_encrypted_type
+    #    end
+    #
     class ActiveRecordEncryptedType < ::ActiveJsonModel::ActiveRecordType
       def type
         :string
       end
 
-      def cast(value)
-        if value.is_a?(@clazz)
-          value
-        elsif value.is_a?(::Array)
-          @clazz.load(value)
-        end
-      end
-
       def deserialize(value)
         if String === value
-            decoded = SymmetricEncryption.decrypt(value, type: :json) rescue nil
+          decoded = SymmetricEncryption.decrypt(value, type: :json) rescue nil
           @clazz.load(decoded)
         else
           super
@@ -46,9 +50,17 @@ if Gem.find_files("symmetric-encryption").any? &&
       def serialize(value)
         case value
         when @clazz
-          ::ActiveSupport::JSON.encode(@clazz.dump(value))
-        when Array, Hash
-          ::ActiveSupport::JSON.encode(value)
+          SymmetricEncryption.encrypt(
+            @clazz.dump(value),
+            random_iv: true,
+            type: :json
+          )
+        when ::Hash, ::HashWithIndifferentAccess, ::Array
+          SymmetricEncryption.encrypt(
+            value,
+            random_iv: true,
+            type: :json
+          )
         else
           super
         end

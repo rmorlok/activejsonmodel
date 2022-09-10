@@ -15,8 +15,19 @@ if Gem.find_files("active_record").any?
     #      end
     #    end
     #
-    #    class Integration < ActiveRecord::Base
+    #    class User < ActiveRecord::Base
     #      attribute :credentials, Credentials.attribute_type
+    #    end
+    #
+    # Alternatively, the type can be registered ahead of time:
+    #
+    #    # config/initializers/types.rb
+    #    ActiveRecord::Type.register(:credentials_type, Credentials.attribute_type)
+    #
+    # Then the custom type can be used as:
+    #
+    #    class User < ActiveRecord::Base
+    #      attribute :credentials, :credentials_type
     #    end
     #
     # This is based on:
@@ -39,11 +50,7 @@ if Gem.find_files("active_record").any?
       end
 
       def cast(value)
-        if value.is_a?(@clazz)
-          value
-        elsif value.is_a?(::Array)
-          @clazz.load(value)
-        end
+        @clazz.active_json_model_cast(value)
       end
 
       def deserialize(value)
@@ -59,7 +66,7 @@ if Gem.find_files("active_record").any?
         case value
         when @clazz
           ::ActiveSupport::JSON.encode(@clazz.dump(value))
-        when Array, Hash
+        when ::Hash, ::HashWithIndifferentAccess, ::Array
           ::ActiveSupport::JSON.encode(value)
         else
           super

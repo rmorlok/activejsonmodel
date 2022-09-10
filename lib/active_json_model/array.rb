@@ -617,6 +617,26 @@ module ActiveJsonModel
         end
       end
 
+      # Convert a value that might already be an instance of this class from underlying data.
+      # Used to delegate potential loading from ActiveRecord attributes
+      #
+      # @param vals either an instance of this model or an array-like object
+      def active_json_model_cast(vals)
+        if vals.is_a?(self)
+          vals
+        elsif vals.is_a?(::Array)
+          if vals.length == 0
+            self.new(values: vals)
+          elsif vals[0].respond_to?(:dump_to_json)
+            self.new(values: vals)
+          else
+            self.load(vals)
+          end
+        elsif vals.nil?
+          self.new(values: [])
+        end
+      end
+
       # Define a polymorphic factory to choose the concrete class for the list model. Note that because the array_data passed
       # to the block is an array of models, you must account for what the behavior is if there are no elements.
       #
