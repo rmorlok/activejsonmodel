@@ -564,7 +564,10 @@ module ActiveJsonModel
       #
       # @param val either an instance of this model or a Hash like object
       def active_json_model_cast(val)
-        if val.is_a?(self)
+        # For polymorphic objects, it's possible that there won't be
+        # a base-class relationship, so just assume that if the
+        # object is an ActiveJsonModel object, it's good.
+        if val.respond_to?(:dump_to_json)
           val
         elsif val.is_a?(::Hash) || val.is_a?(::HashWithIndifferentAccess)
           self.load(val)

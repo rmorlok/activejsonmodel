@@ -63,10 +63,9 @@ if Gem.find_files("active_record").any?
       end
 
       def serialize(value)
-        case value
-        when @clazz
-          ::ActiveSupport::JSON.encode(@clazz.dump(value))
-        when ::Hash, ::HashWithIndifferentAccess, ::Array
+        if value.respond_to?(:dump_to_json)
+          ::ActiveSupport::JSON.encode(value.dump_to_json)
+        elsif ::Hash === value ||  ::HashWithIndifferentAccess === value || ::Array === value
           ::ActiveSupport::JSON.encode(value)
         else
           super
