@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Set up Ruby ${{ matrix.ruby-version }}
-        uses: ruby/setup-ruby@904f3fef85a9c80a3750cbe7d5159268fd5caa9f
+        uses: ruby/setup-ruby@22fdc77bf4148f810455b226c90fb81b5cbc00a7
         with:
           ruby-version: ${{ matrix.ruby-version }}
       - name: Install dependencies
@@ -42,7 +42,7 @@ jobs:
         with:
           repository: 'rmorlok/activejsonmodel-rails-test'
       - name: Set up Ruby ${{ matrix.ruby-version }}
-        uses: ruby/setup-ruby@904f3fef85a9c80a3750cbe7d5159268fd5caa9f
+        uses: ruby/setup-ruby@22fdc77bf4148f810455b226c90fb81b5cbc00a7
         with:
           ruby-version: ${{ matrix.ruby-version }}
       - name: Install dependencies
