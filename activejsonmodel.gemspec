@@ -38,5 +38,5 @@ EOF
   spec.require_paths = ["lib"]
 
   spec.add_dependency 'activemodel', '>= 5.1', '< 7.1'
-  spec.add_dependency 'activesupport', '>= 5.1', '< 7.1'
+  spec.add_dependency 'activesupport', '>= 5.1', '< 7.2'
 end
